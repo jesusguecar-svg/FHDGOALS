@@ -1,1 +1,40 @@
-# FHDGOALS
+# FHD Production Command Center
+
+Single-file React artifact: a personal sales-production tracker for a Globe Life
+Family Heritage Division Sales Professional on the personal-production track.
+
+**File:** `FHDProductionCommandCenter.jsx` — default export, no required props.
+
+## Stack
+- React (hooks only), `recharts`, `lucide-react`
+- Tailwind core utility classes only (no arbitrary values, no custom config)
+- Persistence via `window.storage` only — never `localStorage`/`sessionStorage`.
+  Keys: `fhd:weeks`, `fhd:profile`, `fhd:eagles`, `fhd:conservation`, `fhd:activity`.
+  Every call is wrapped in try/catch and degrades to in-memory state.
+
+## What it computes
+The FHD rule set is hard-coded as a live engine, not static text:
+
+- **Sales calendar** — Monday-anchored sales weeks and sales months (Aug–Dec 2026
+  published; Apr–Jul derived from the same pattern for history).
+- **Activity minimum** — 3 production weeks in a 4-week month, 4 in a 5-week
+  month; raises a full-width red alarm the moment it becomes mathematically
+  unreachable, and forces the bonus to $0 with the reason shown.
+- **Monthly Cash Bonus** — full tier ladder, always displayed after the A/T
+  multiplier, never as a raw tier.
+- **Quality Business Multiplier** — 120% cap, linear 85–119%, zero below 85%,
+  with new-agent 100% protection and its own expiry countdown.
+- **String Club** — single-week ladder, Green Out through Soaring Eagle.
+- **GLU 101** — both qualification paths tracked in parallel with separate
+  qualification and registration countdowns.
+- **Quarterly Stock Bonus**, **$100 Eagle Bonus** (per-write-up 14-day timers),
+  **license reimbursement**, **Top 150 annual race**, dormant 2027 Mid-Year card,
+  and watch-list items with no published thresholds.
+
+Every gap is expressed in three units: dollars, apps (at $243/app), and
+days-at-current-pace.
+
+## Seed data
+Loads populated with the agent's real 2026 log (weeks 17–31), A/T and CAI
+history, PR records, and open conservation items, so the dashboard renders full
+on first open. "Reset all data" restores this baseline behind a confirm.
