@@ -51,6 +51,25 @@ The FHD rule set is hard-coded as a live engine, not static text:
 Every gap is expressed in three units: dollars, apps (at $243/app), and
 days-at-current-pace.
 
+## Scope — FHD only
+
+This tracker carries **Globe Life Family Heritage Division incentives only**,
+sourced from the 2026 Incentives, Awards and Recognition brochure, the Summer
+Ka-Ching flyer, and division email.
+
+The branch `agent/import-fhd-goals-files` contains a President's Club 2027
+target ($165,000 / top 55, Big Sky MT, qualification Feb 1 – Jan 31) and a
+Chairman's Club 2027 target ($275,000 / top 45). **These are deliberately not
+implemented.** They are sourced in that document to an unnamed public flyer,
+not to any FHD material, and they conflict with the FHD structure on every
+axis: a different meeting, qualification on active-app count and portfolio
+persistency rather than the A/T ratio, and case sizes (~$11,690/app) that do
+not match this book of business (~$243/app).
+
+The same branch's 8-week sprint ($280,569) carries its own warning to confirm
+whether it is active before treating it as current. Do not import any of it
+without a Family Heritage Division source document.
+
 ## Seed data
 Loads populated with the agent's real 2026 log (weeks 17–31), A/T and CAI
 history, PR records, and open conservation items, so the dashboard renders full
