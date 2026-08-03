@@ -79,3 +79,4 @@ For August 2026, do not use `$27,500/month` as the only motivational target. Kee
 - Qualification pace: `$27,500`.
 
 The goal is to raise the floor first, then push the ceiling. Weekly stats should decide whether the bottleneck is activity volume, conversion, or case size.
+
