@@ -37,8 +37,13 @@ The FHD rule set is hard-coded as a live engine, not static text:
 - **Quality Business Multiplier** — 120% cap, linear 85–119%, zero below 85%,
   with new-agent 100% protection and its own expiry countdown.
 - **String Club** — single-week ladder, Green Out through Soaring Eagle.
-- **GLU 101** — both qualification paths tracked in parallel with separate
-  qualification and registration countdowns.
+- **GLU 101** — three sessions (Aug 2026 closed, the Spanish-language Academia
+  de Liderazgo Latina on Sep 22–23, and Nov 2026), each with both qualification
+  paths tracked in parallel and separate qualification / registration
+  countdowns.
+- **Summer Ka-Ching** — the August 2026 cash bonus pays ×2. Every displayed
+  payout routes through the promo factor, then the A/T multiplier, and still
+  zeroes if the activity minimum fails.
 - **Quarterly Stock Bonus**, **$100 Eagle Bonus** (per-write-up 14-day timers),
   **license reimbursement**, **Top 150 annual race**, dormant 2027 Mid-Year card,
   and watch-list items with no published thresholds.

@@ -102,6 +102,26 @@ const BONUS_TIERS = [
 ];
 const NEW_AGENT_TIER = { nap: 10000, bonus: 250 };
 
+/* Limited-time promotions that change a sales month's payout. Summer Ka-Ching
+   doubles the August 2026 monthly cash bonus; its qualification weeks
+   (Jul 27 - Aug 17, 4 weeks) are exactly the August sales month, weeks 31-34.
+   Personal sales NAP only, and it stays subject to every other incentive
+   guideline - the activity minimum still gates it and A/T still multiplies. */
+const PROMOS = [{
+  id: "summer-ka-ching",
+  name: "Summer Ka-Ching",
+  monthKey: "2026-08",
+  factor: 2,
+  window: [D(2026, 7, 27), D(2026, 8, 23)],
+  fine: [
+    "Subject to all incentive guidelines and to the new-business closing dates and times.",
+    "Only personal sales NAP counts.",
+    "The $10,000 / $500 tier is available only to new agents inside their first 52 weeks.",
+    "See the 2026 Incentives, Awards and Recognition brochure for full rules.",
+  ],
+}];
+const promoFor = (monthKey) => PROMOS.find((x) => x.monthKey === monthKey) || null;
+
 const STRING_CLUB = [
   { name: "Green Out", nap: 5000 },
   { name: "Globe Week", nap: 7500 },
@@ -119,6 +139,16 @@ const GLU_SESSIONS = [
     qual: [D(2026, 4, 6), D(2026, 7, 19)],
     reg: null,
     regClosed: true,
+  },
+  {
+    id: "glu-sep-2026-latina",
+    label: "Academia de Liderazgo Latina GLU 101 — Sep 22–23, 2026",
+    session: [D(2026, 9, 22), D(2026, 9, 23)],
+    qual: [D(2026, 4, 13), D(2026, 8, 23)],
+    reg: [D(2026, 8, 3), D(2026, 8, 31)],
+    regClosed: false,
+    spanish: true,
+    note: "Impartida totalmente en español. La siguiente edición de la Academia de Liderazgo Latina será en 2027.",
   },
   {
     id: "glu-nov-2026",
@@ -663,14 +693,18 @@ function buildModel(weeks, profile, eagles, activity, conservation, today) {
     const met = produced.length >= required;
     const tier = bonusTierFor(nap, newAgent);
     const next = nextBonusTier(nap, newAgent);
-    const payout = failed || atFails ? 0 : Math.round(tier.bonus * (multiplier / 100));
+    const promo = promoFor(m.key);
+    const factor = promo ? promo.factor : 1;
+    const tierBonus = tier.bonus * factor;              // after promo, before A/T
+    const nextBonus = next ? next.bonus * factor : 0;
+    const payout = failed || atFails ? 0 : Math.round(tierBonus * (multiplier / 100));
     const closed = daysBetween(today, monthEnd(m)) < 0;
     return {
       month: m, entries, nap, netApps, gross, required, met, failed, mustRunTheTable, closed,
       producedWeeks: produced, weeksProduced: produced.length,
       weeksRemaining: stillAvailable.length, remainingWeekNums: stillAvailable,
       weeksUsed: m.weeks.filter((w) => byWeek[w] && !byWeek[w].unconfirmed).length,
-      tier, next, payout,
+      tier, next, promo, factor, tierBonus, nextBonus, payout,
       gapToNext: next ? Math.max(0, next.nap - nap) : 0,
       paceNeeded: next && stillAvailable.length > 0 ? Math.max(0, next.nap - nap) / stillAvailable.length : null,
     };
@@ -834,7 +868,7 @@ function computeNextTarget(m) {
   push("Green Out", GREEN_OUT - m.curWeekNap, "week");
   if (m.stringNextThisWeek) push(m.stringNextThisWeek.name, m.stringNextThisWeek.nap - m.curWeekNap, "week");
   if (m.bestWeek.nap > m.curWeekNap) push(`PR tie — best week ${money(m.bestWeek.nap)}`, m.bestWeek.nap - m.curWeekNap, "week");
-  if (m.thisMonth.next) push(`${money(m.thisMonth.next.nap)} bonus tier (${money(m.thisMonth.next.bonus)})`, m.thisMonth.gapToNext, "month");
+  if (m.thisMonth.next) push(`${money(m.thisMonth.next.nap)} bonus tier (${money(m.thisMonth.nextBonus)}${m.thisMonth.promo ? " — " + m.thisMonth.promo.name : ""})`, m.thisMonth.gapToNext, "month");
   if (m.bestMonth && m.bestMonth.nap > m.thisMonth.nap && m.bestMonth.month.key !== m.thisMonth.month.key)
     push(`PR tie — best month ${money(m.bestMonth.nap)}`, m.bestMonth.nap - m.thisMonth.nap, "month");
   if (m.liveGlu && !m.liveGlu.expired && !m.liveGlu.qualified) {
@@ -1349,6 +1383,48 @@ function Card({ title, icon: Icon, tone = "gray", onClick, children, pulse = fal
   );
 }
 
+function PromoBanner({ agg, model: m }) {
+  const p = agg.promo;
+  const daysLeft = daysBetween(m.today, p.window[1]) + 1;
+  const next = agg.next;
+  return (
+    <div className="fhd-panel border-2 border-stone-900 bg-yellow-50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-900 pb-1">
+        <span className="fhd-display text-xl font-bold text-stone-900">
+          {p.name} — {agg.month.label} cash bonus pays ×{p.factor}
+        </span>
+        <span className="fhd-data text-xs text-stone-600">
+          {fmtLong(p.window[0])} – {fmtLong(p.window[1])} · {daysLeft} days left
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-widest text-stone-500">Doubled tier at current NAP</div>
+          <div className="fhd-figure text-3xl font-bold text-yellow-800">{money(agg.tierBonus)}</div>
+          <div className="text-xs text-stone-600">{money(agg.tier.bonus)} base ×{p.factor}</div>
+        </div>
+        <div>
+          <div className="text-xs font-bold uppercase tracking-widest text-stone-500">Next tier pays</div>
+          <div className="fhd-figure text-3xl font-bold text-yellow-800">{next ? money(agg.nextBonus) : "—"}</div>
+          <div className="text-xs text-stone-600">{next ? `at ${money(next.nap)} NAP · gap ${money(agg.gapToNext)}` : "top tier"}</div>
+        </div>
+        <div>
+          <div className="text-xs font-bold uppercase tracking-widest text-stone-500">After A/T, if the minimum holds</div>
+          <div className={`fhd-figure text-3xl font-bold ${agg.failed ? "text-red-800" : "text-emerald-800"}`}>
+            {next ? money(Math.round(agg.nextBonus * (m.multiplier / 100))) : money(agg.payout)}
+          </div>
+          <div className="text-xs text-stone-600">
+            {agg.failed ? "activity minimum failed — pays $0" : `${pct(m.multiplier, 1)} multiplier applied`}
+          </div>
+        </div>
+      </div>
+      <ul className="mt-3 space-y-1 border-t border-stone-400 pt-2 text-xs text-stone-600">
+        {p.fine.map((f, i) => <li key={i}>· {f}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 function DashboardTab({ model: m, nextTarget, go, profile }) {
   const monthEndDays = daysBetween(m.today, monthEnd(m.currentMonth)) + 1;
   const weekTone = m.curWeekNap >= GREEN_OUT ? "blue" : m.curWeekNap > 0 ? "amber" : "red";
@@ -1381,6 +1457,8 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
         </div>
       </div>
 
+      {m.thisMonth.promo ? <PromoBanner agg={m.thisMonth} model={m} /> : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {/* THIS WEEK */}
         <Card title="This Week" icon={Calendar} tone={weekTone} onClick={() => go("weekly")}>
@@ -1396,7 +1474,7 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
           <Stat label={m.currentMonth.label} value={money(m.thisMonth.nap)} tone={m.thisMonth.failed ? "red" : "amber"} sub={`${monthRange(m.currentMonth)} · ${m.currentMonth.weeks.length} weeks`} size="text-3xl" />
           <div className="mt-2 text-xs text-stone-600">
             Weeks used: <span className="font-bold text-stone-800">{m.thisMonth.weeksUsed}/{m.currentMonth.weeks.length}</span> ·
-            Tier: <span className="font-bold text-stone-800">{m.thisMonth.tier.bonus ? money(m.thisMonth.tier.bonus) : "none"}</span>
+            Tier: <span className="font-bold text-stone-800">{m.thisMonth.tierBonus ? money(m.thisMonth.tierBonus) : "none"}</span>
           </div>
           <div className="mt-2 rounded-none border border-stone-400 bg-stone-100 p-2">
             <div className="text-xs uppercase tracking-wide text-stone-500">Projected payout after A/T</div>
@@ -1404,7 +1482,7 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
               {money(m.thisMonth.payout)}
             </div>
             <div className="text-xs text-stone-500">
-              {m.thisMonth.failed ? "Activity minimum failed — pays $0" : `${money(m.thisMonth.tier.bonus)} tier × ${pct(m.multiplier, 1)} multiplier`}
+              {m.thisMonth.failed ? "Activity minimum failed — pays $0" : `${money(m.thisMonth.tierBonus)} tier${m.thisMonth.promo ? " (×2 " + m.thisMonth.promo.name + ")" : ""} × ${pct(m.multiplier, 1)} multiplier`}
             </div>
           </div>
           <div className="mt-2 text-xs text-stone-600">{monthEndDays} days left in sales month</div>
@@ -1718,6 +1796,13 @@ function MonthlyTab({ model: m }) {
         <p>Paid on personal NAP within a sales month. Tiers: $15,000 → $375 · $20,000 → $750 · $30,000 → $1,500 · $40,000 → $2,000 · $50,000 → $3,000 · $60,000 → $3,500 · $70,000 → $4,000 · $80,000 → $4,500 · $90,000 → $5,000 · $100,000 → $6,000. New agents only: $10,000 NAP pays $250.</p>
         <p>Activity minimum: business must be produced in at least 3 weeks of a 4-week sales month, or 4 weeks of a 5-week sales month. Fail it and the bonus pays $0 regardless of NAP.</p>
         <p>The Quality Business Multiplier (12-month A/T ratio) is applied to the tier amount. Below 85% A/T, everything zeroes out.</p>
+        {a.promo ? (
+          <p className="border-t border-stone-400 pt-2 font-bold text-stone-900">
+            {a.promo.name}: every {a.month.label} cash bonus tier pays ×{a.promo.factor} in cash.
+            Qualification weeks {fmtLong(a.promo.window[0])} – {fmtLong(a.promo.window[1])} ({a.month.weeks.length} weeks).
+            {" "}{a.promo.fine.join(" ")}
+          </p>
+        ) : null}
       </RuleBox>
 
       {a.failed ? <ActivityAlarm agg={a} /> : null}
@@ -1728,7 +1813,7 @@ function MonthlyTab({ model: m }) {
         </Panel>
         <Panel tone={a.failed ? "red" : a.payout > 0 ? "green" : "gray"}>
           <Stat label="Projected payout (after A/T)" value={money(a.payout)} tone={a.failed ? "red" : a.payout > 0 ? "green" : "gray"} size="text-4xl"
-            sub={a.failed ? "Activity minimum failed — $0" : `${money(a.tier.bonus)} tier × ${pct(m.multiplier, 1)}`} />
+            sub={a.failed ? "Activity minimum failed — $0" : `${money(a.tierBonus)} tier${a.promo ? " (×" + a.factor + " " + a.promo.name + ")" : ""} × ${pct(m.multiplier, 1)}`} />
         </Panel>
         <Panel tone={urgencyTone(daysLeft)} pulse={urgencyPulse(daysLeft)}>
           <Stat label="Days left in sales month" value={daysLeft} tone={urgencyTone(daysLeft)} size="text-4xl" sub={`Closes ${fmtLong(monthEnd(a.month))}`} />
@@ -1767,8 +1852,11 @@ function MonthlyTab({ model: m }) {
                   <span className={`font-bold ${TONE[tone].text}`}>{money(t.nap)}</span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-black text-stone-800">{money(t.bonus)}</div>
-                  <div className="text-xs text-stone-500">after A/T: {money(Math.round(t.bonus * (m.multiplier / 100)))}</div>
+                  <div className="text-sm font-black text-stone-800">
+                    {money(t.bonus * a.factor)}
+                    {a.promo ? <span className="ml-1 text-xs font-normal text-stone-500">({money(t.bonus)} ×{a.factor})</span> : null}
+                  </div>
+                  <div className="text-xs text-stone-500">after A/T: {money(Math.round(t.bonus * a.factor * (m.multiplier / 100)))}</div>
                 </div>
                 <div className="w-24 text-right text-xs text-stone-600">{cleared ? "cleared" : `gap ${money(t.nap - a.nap)}`}</div>
               </div>
@@ -1782,7 +1870,7 @@ function MonthlyTab({ model: m }) {
         {a.next ? (
           <>
             <div className="mt-1 text-2xl font-black text-yellow-800">
-              {money(a.gapToNext)} more → {money(a.next.nap)} tier ({money(a.next.bonus)}, {money(Math.round(a.next.bonus * (m.multiplier / 100)))} after A/T)
+              {money(a.gapToNext)} more → {money(a.next.nap)} tier ({money(a.nextBonus)}, {money(Math.round(a.nextBonus * (m.multiplier / 100)))} after A/T)
             </div>
             <div className="mt-2"><GapTriad dollars={a.gapToNext} dailyNap={m.dailyNap} /></div>
             <div className="mt-2 text-sm text-stone-700">
@@ -1805,7 +1893,7 @@ function MonthlyTab({ model: m }) {
             <span className={x.nap > 0 ? "font-bold text-yellow-800" : "text-stone-500"}>{money(x.nap)}</span>,
             <span className={x.met ? "font-bold text-emerald-800" : "font-bold text-red-800"}>{x.weeksProduced}</span>,
             x.required,
-            x.tier.bonus ? money(x.tier.bonus) : "—",
+            x.tierBonus ? money(x.tierBonus) : "—",
             <span className={x.payout > 0 ? "font-bold text-emerald-800" : "text-red-800"}>{money(x.payout)}</span>,
             x.failed ? <Chip tone="red">Min failed</Chip> : x.closed ? <Chip tone="gray">Closed</Chip> : x.month.key === m.currentMonth.key ? <Chip tone="amber">In progress</Chip> : <Chip tone="gray">Future</Chip>,
           ])}
@@ -1904,8 +1992,12 @@ function GluTab({ model: m }) {
           <Panel key={s.id} tone={s.qualified ? "blue" : dead ? "gray" : urgencyTone(s.qualDaysLeft)} pulse={!dead && !s.qualified && urgencyPulse(s.qualDaysLeft)}>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <span className="text-lg font-black uppercase tracking-wide text-stone-900">{s.label}</span>
-              {s.qualified ? <Chip tone="blue">Qualified</Chip> : dead ? <Chip tone="gray">Window closed</Chip> : <Chip tone="amber">Open</Chip>}
+              <span className="flex flex-wrap items-center gap-2">
+                {s.spanish ? <Chip tone="blue">En español</Chip> : null}
+                {s.qualified ? <Chip tone="blue">Qualified</Chip> : dead ? <Chip tone="gray">Window closed</Chip> : <Chip tone="amber">Open</Chip>}
+              </span>
             </div>
+            {s.note ? <p className="mb-2 border-l-2 border-blue-900 pl-2 text-xs italic text-stone-700">{s.note}</p> : null}
             <div className="text-xs text-stone-600">
               Qualification window {fmtLong(s.qual[0])} – {fmtLong(s.qual[1])}
               {s.reg ? ` · Registration ${fmtLong(s.reg[0])} – ${fmtLong(s.reg[1])}` : " · Registration closed"}
@@ -2414,7 +2506,7 @@ function PaceTab({ model: m }) {
     { label: "Green Out ($5,000 week)", hit: projWeek >= GREEN_OUT, detail: money(GREEN_OUT) },
     { label: m.stringNextThisWeek ? `String Club — ${m.stringNextThisWeek.name}` : "String Club — maxed", hit: m.stringNextThisWeek ? projWeek >= m.stringNextThisWeek.nap : true, detail: m.stringNextThisWeek ? money(m.stringNextThisWeek.nap) : "—" },
     { label: `New best week (PR ${money(m.bestWeek.nap)})`, hit: projWeek > m.bestWeek.nap, detail: money(m.bestWeek.nap) },
-    { label: m.thisMonth.next ? `Monthly tier ${money(m.thisMonth.next.nap)} → ${money(m.thisMonth.next.bonus)}` : "Top monthly tier", hit: m.thisMonth.next ? projMonth >= m.thisMonth.next.nap : true, detail: m.thisMonth.next ? money(m.thisMonth.next.nap) : "—" },
+    { label: m.thisMonth.next ? `Monthly tier ${money(m.thisMonth.next.nap)} → ${money(m.thisMonth.nextBonus)}` : "Top monthly tier", hit: m.thisMonth.next ? projMonth >= m.thisMonth.next.nap : true, detail: m.thisMonth.next ? money(m.thisMonth.next.nap) : "—" },
     { label: "Quarterly stock slot ($20,000 month)", hit: projMonth >= QUARTERLY_STOCK_NAP, detail: money(QUARTERLY_STOCK_NAP) },
     { label: `GLU 101 $30k path (${gluNext.label.replace("GLU 101 — ", "")})`, hit: gluNext.napInWindow + added >= GLU_NAP_TARGET, detail: money(GLU_NAP_TARGET) },
     { label: "License reimbursement ($50k cumulative)", hit: m.ytdNap + added >= LICENSE_REIMB_NAP, detail: money(LICENSE_REIMB_NAP) },
@@ -2449,7 +2541,7 @@ function PaceTab({ model: m }) {
             <div className="text-xs uppercase text-stone-500">{m.currentMonth.label} finishes at</div>
             <div className="text-3xl font-black text-yellow-800">{money(projMonth)}</div>
             <div className="text-xs text-stone-500">
-              tier {money(bonusTierFor(projMonth, m.newAgent).bonus)} → {money(Math.round(bonusTierFor(projMonth, m.newAgent).bonus * (m.multiplier / 100)))} after A/T
+              tier {money(bonusTierFor(projMonth, m.newAgent).bonus * m.thisMonth.factor)} → {money(Math.round(bonusTierFor(projMonth, m.newAgent).bonus * m.thisMonth.factor * (m.multiplier / 100)))} after A/T
               {m.thisMonth.failed ? " (activity minimum failed — pays $0)" : ""}
             </div>
           </div>
@@ -2513,6 +2605,8 @@ const RULES = [
   { t: "Quality Business Multiplier (A/T)", b: "120%+ → 120% multiplier. 100–119% → the ratio itself. 85–99% → the ratio itself. Below 85% → 0%, everything zeroes out. Applies to the Monthly Cash Bonus and the Quarterly Stock Bonus. 85%+ also required for Annual Awards. New agents are given 100% A/T automatically for their first 6 months." },
   { t: "String Club", b: "Single-week NAP records. Green Out $5,000 · Globe Week $7,500 · Flight of the Eagle $10,000 · Leaders Eagle $15,000 · Heritage Eagle $20,000 · Soaring Eagle $25,000." },
   { t: "GLU 101 — Foundations of Agency Building", b: "Qualify with EITHER three Green-Outs ($5,000+ weeks) OR $30,000 NAP within the qualification window. Aug 19–21, 2026 session: qualification Apr 6 – Jul 19, 2026, registration CLOSED. Nov 4–6, 2026 session: qualification Jul 22 – Oct 4, 2026, registration Sep 14 – Oct 16, 2026." },
+  { t: "Summer Ka-Ching — August 2026 double cash bonus", b: "Every August 2026 Monthly Cash Bonus tier pays double in cash: $15,000 NAP pays $750, $20,000 pays $1,500, $30,000 pays $3,000, $40,000 pays $4,000, $50,000 pays $6,000, $60,000 pays $7,000, $70,000 pays $8,000, $80,000 pays $9,000, $90,000 pays $10,000, $100,000 pays $12,000. New agents inside their first 52 weeks: $10,000 NAP pays $500. Qualification period is the week of July 27 through the week of August 17, 2026 — four weeks, exactly the August sales month (weeks 31–34). Only personal sales NAP counts. Subject to all incentive guidelines and to the new-business closing dates and times." },
+  { t: "Academia de Liderazgo Latina GLU 101 — September 2026", b: "Spanish-language edition of GLU 101, held September 22–23, 2026. Qualification: three Green-Outs ($5,000+ NAP in a single week) OR $30,000 NAP across the qualification period. Qualification period: April 13 (week 16) through August 23, 2026 (week 34). Registration period: August 3–31, 2026. Invitations go out to those who have met the requirements. The next Academia de Liderazgo Latina after this one is in 2027." },
   { t: "Quarterly Stock Bonus", b: "Three Monthly Cash Bonuses of $20,000+ NAP each within one quarter earns $2,000 in Globe Life stock plus a $105 mobile technology fee reimbursement. Requires 85%+ A/T." },
   { t: "$100 Eagle Bonus", b: "$100 for every Eagle write-up submitted within 2 weeks of the write-up date. Submitted late = forfeited." },
   { t: "License reimbursement", b: "$50,000 cumulative NAP earns reimbursement of licensing expenses." },
