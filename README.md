@@ -67,5 +67,10 @@ provides, in priority order, and names the active one in the header:
 
 Browser storage is per-device and can be cleared by the browser, so **Backup**
 writes a dated JSON file with the full log, and **Restore** reads one back. That
-file is the copy that moves between phone and laptop and survives a cleared
-cache — the durable record, and the way to carry the log into the repo.
+file is the copy that survives a cleared cache, and the way to carry the log
+into the repo.
+
+**Phone ↔ Laptop** turns the same data into a paste-able sync code (`FHD1.…`).
+Copy it on the device you logged on, paste it on the other one. Each device
+keeps its own store, so the paste replaces that device's log — always copy from
+whichever device you logged on last.

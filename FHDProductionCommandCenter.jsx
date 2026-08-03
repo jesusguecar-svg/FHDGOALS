@@ -338,8 +338,33 @@ const buildBackup = (weeks, profile, eagles, conservation, activity) => JSON.str
   weeks, profile, eagles, conservation, activity,
 }, null, 2);
 
+/* Sync code — the same backup as a paste-able string, so a phone and a laptop
+   can hand the log back and forth without a file transfer. Browser storage is
+   per-device; this is the bridge between them.                              */
+
+const encodeSync = (json) => {
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return "FHD1." + btoa(bin);
+};
+
+const decodeSync = (code) => {
+  const trimmed = String(code || "").trim().replace(/\s+/g, "");
+  if (!trimmed) throw new Error("Paste a sync code first.");
+  if (!trimmed.startsWith("FHD1.")) throw new Error("That is not an FHD sync code — it should start with FHD1.");
+  const bin = atob(trimmed.slice(5));
+  const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+
 function readBackup(text) {
-  const parsed = JSON.parse(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error("That backup is damaged — copy the sync code again, all of it.");
+  }
   if (!parsed || typeof parsed !== "object") throw new Error("That file is not a backup.");
   if (!Array.isArray(parsed.weeks)) throw new Error("That backup has no weekly log in it.");
   return {
@@ -863,6 +888,33 @@ export default function FHDProductionCommandCenter() {
     say(res.ok ? `Backup saved as ${name}.` : res.msg, res.ok ? "green" : "amber");
   }, [weeks, profile, eagles, conservation, activity, today, say]);
 
+  const applyRestore = useCallback(async (raw) => {
+    try {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) throw new Error("Paste a sync code first.");
+      let text;
+      if (trimmed.startsWith("FHD1.")) text = decodeSync(trimmed);
+      else if (trimmed.startsWith("{")) text = trimmed;
+      else throw new Error("That doesn't look like a sync code — it should start with FHD1.");
+      const b = readBackup(text);
+      if (!window.confirm(`Restore ${b.weeks.length} logged weeks? Everything currently in the dashboard is replaced.`)) return;
+      setWeeks(b.weeks); setProfile(b.profile); setEagles(b.eagles);
+      setConservation(b.conservation); setActivity(b.activity);
+      await Promise.all([
+        storeSet(K.weeks, b.weeks), storeSet(K.profile, b.profile), storeSet(K.eagles, b.eagles),
+        storeSet(K.conservation, b.conservation), storeSet(K.activity, b.activity),
+      ]);
+      say(`Restored ${b.weeks.length} weeks. This device is now up to date.`, "green");
+    } catch (err) {
+      say(err && err.message ? err.message : "That could not be read as a backup.", "red");
+    }
+  }, [say]);
+
+  const syncCode = useCallback(
+    () => encodeSync(buildBackup(weeks, profile, eagles, conservation, activity)),
+    [weeks, profile, eagles, conservation, activity]
+  );
+
   const importBackup = useCallback(async (file) => {
     if (!file) return;
     try {
@@ -998,7 +1050,8 @@ export default function FHDProductionCommandCenter() {
       <div className="mx-auto max-w-6xl px-3 pb-24 pt-4 sm:px-5">
         <DeadlineStrip model={model} go={setTab} />
         <Header profile={profile} model={model} onReset={resetAll} persistOk={persistOk}
-          onExport={exportBackup} onImport={importBackup} />
+          onExport={exportBackup} onImport={importBackup} onRestoreText={applyRestore}
+          syncCode={syncCode} say={say} weekCount={weeks.length} />
         {model.thisMonth.failed ? <ActivityAlarm agg={model.thisMonth} /> : null}
         {celebration ? <Celebration hits={celebration} onClose={() => setCelebration(null)} /> : null}
         {flash ? (
@@ -1037,8 +1090,56 @@ export default function FHDProductionCommandCenter() {
 
 /* ------------------------------------------------------------ shell pieces */
 
-function Header({ profile, model, onReset, persistOk, onExport, onImport }) {
+function SyncPanel({ syncCode, onRestoreText, say, weekCount, onClose }) {
+  const [code, setCode] = useState("");
+  const [paste, setPaste] = useState("");
+
+  const copy = async () => {
+    const c = syncCode();
+    setCode(c);
+    try {
+      await navigator.clipboard.writeText(c);
+      say(`Sync code copied — ${weekCount} weeks. Paste it on your other device.`, "green");
+    } catch (e) {
+      say("Clipboard blocked — select the code below and copy it by hand.", "amber");
+    }
+  };
+
+  return (
+    <div className="w-full rounded-xl border border-sky-800 bg-slate-900 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-black uppercase tracking-widest text-sky-400">Move the log between devices</span>
+        <button onClick={onClose} className="text-slate-500"><XCircle size={18} /></button>
+      </div>
+      <p className="mb-3 text-xs text-slate-400">
+        Each device keeps its own copy. Copy the code here, paste it there — text it to yourself, email it, whatever's fastest.
+        Whichever device you paste into gets replaced by the log you copied, so copy from the one you logged on last.
+      </p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-300">1 · On the device you just logged on</div>
+          <button onClick={copy} className={`${btnCls} w-full bg-sky-600 text-white`}>Copy sync code ({weekCount} weeks)</button>
+          {code ? (
+            <textarea readOnly value={code} rows={4} onFocus={(e) => e.target.select()}
+              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-400" />
+          ) : null}
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-300">2 · On the other device</div>
+          <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} placeholder="Paste the sync code here…"
+            className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-100 outline-none focus:border-sky-500" />
+          <button onClick={() => { onRestoreText(paste); setPaste(""); }} className={`${btnCls} mt-2 w-full bg-emerald-600 text-white`}>
+            Load this log onto this device
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Header({ profile, model, onReset, persistOk, onExport, onImport, onRestoreText, syncCode, say, weekCount }) {
   const fileRef = React.useRef(null);
+  const [showSync, setShowSync] = useState(false);
   const d = DRIVER_LABEL[storageDriver()];
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -1053,6 +1154,9 @@ function Header({ profile, model, onReset, persistOk, onExport, onImport }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={d.tone}>{d.text}</Chip>
+        <button onClick={() => setShowSync((v) => !v)} className={`${btnCls} bg-sky-600 text-white`}>
+          <RefreshCw size={14} /> Phone ↔ Laptop
+        </button>
         <button onClick={onExport} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
           <Save size={14} /> Backup
         </button>
@@ -1070,6 +1174,9 @@ function Header({ profile, model, onReset, persistOk, onExport, onImport }) {
           This browser is not letting the dashboard save anything. Entries last until you close the tab —
           hit <span className="font-black">Backup</span> before you leave, and <span className="font-black">Restore</span> next time.
         </div>
+      ) : null}
+      {showSync ? (
+        <SyncPanel syncCode={syncCode} onRestoreText={onRestoreText} say={say} weekCount={weekCount} onClose={() => setShowSync(false)} />
       ) : null}
     </div>
   );
