@@ -52,6 +52,20 @@ npm install react react-dom recharts lucide-react tailwindcss@3
 ```
 
 The build inlines React, recharts, lucide and the generated Tailwind CSS into
-one file with no external requests, so it opens anywhere. A published page has
-no `window.storage`, so it runs in memory and shows a "Memory only" chip —
-entries last for the session but do not survive a reload.
+one file with no external requests, so it opens anywhere.
+
+## Where the data lives
+
+The dashboard saves to whichever store the surface it is running on actually
+provides, in priority order, and names the active one in the header:
+
+| Surface | Store | Header chip |
+|---|---|---|
+| Claude conversation artifact | `window.storage` | Saved to Claude storage |
+| Published page / any browser | `localStorage` (per device+browser) | Saved on this device |
+| Storage blocked entirely | memory | Session only — export a backup |
+
+Browser storage is per-device and can be cleared by the browser, so **Backup**
+writes a dated JSON file with the full log, and **Restore** reads one back. That
+file is the copy that moves between phone and laptop and survives a cleared
+cache — the durable record, and the way to carry the log into the repo.

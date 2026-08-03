@@ -258,25 +258,123 @@ const SEED_EAGLES = [];
 const SEED_ACTIVITY = [];
 
 /* --------------------------------------------------------------- storage */
+/* The dashboard runs in two different places, so it saves to whichever store
+   that place actually gives it, in priority order:
+     1. window.storage — inside a Claude conversation artifact
+     2. localStorage   — a published page or any plain browser
+     3. memory         — neither is reachable; the session still works
+   Every call is wrapped in try/catch, and the active driver is shown in the
+   header so it is never a mystery whether the log is being kept.            */
 
 const hasStorage = () => typeof window !== "undefined" && window.storage && typeof window.storage.get === "function";
 
+const memoryStore = {};
+
+const localOk = () => {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    window.localStorage.setItem("fhd:__probe", "1");
+    window.localStorage.removeItem("fhd:__probe");
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+let DRIVER = null;
+const storageDriver = () => {
+  if (DRIVER) return DRIVER;
+  DRIVER = hasStorage() ? "claude" : localOk() ? "local" : "memory";
+  return DRIVER;
+};
+
+const DRIVER_LABEL = {
+  claude: { text: "Saved to Claude storage", tone: "blue" },
+  local: { text: "Saved on this device", tone: "green" },
+  memory: { text: "Session only — export a backup", tone: "amber" },
+};
+
 async function storeGet(key, fallback) {
   try {
-    if (!hasStorage()) return fallback;
-    const v = await window.storage.get(key, false);
-    return v === undefined || v === null ? fallback : v;
+    const d = storageDriver();
+    if (d === "claude") {
+      const v = await window.storage.get(key, false);
+      return v === undefined || v === null ? fallback : v;
+    }
+    if (d === "local") {
+      const raw = window.localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    }
+    return key in memoryStore ? memoryStore[key] : fallback;
   } catch (e) {
     return fallback;
   }
 }
+
 async function storeSet(key, value) {
   try {
-    if (!hasStorage()) return false;
-    await window.storage.set(key, value, false);
-    return true;
+    const d = storageDriver();
+    if (d === "claude") { await window.storage.set(key, value, false); return true; }
+    if (d === "local") { window.localStorage.setItem(key, JSON.stringify(value)); return true; }
+    memoryStore[key] = value;
+    return false; // stored, but only for this session
   } catch (e) {
+    memoryStore[key] = value;
     return false;
+  }
+}
+
+/* ------------------------------------------------------- backup / restore */
+/* Browser storage is not a filing cabinet — it can be cleared by the browser,
+   and it does not follow you to another device. A JSON backup is the copy that
+   actually survives.                                                        */
+
+const BACKUP_VERSION = 1;
+
+const buildBackup = (weeks, profile, eagles, conservation, activity) => JSON.stringify({
+  app: "FHD Production Command Center",
+  version: BACKUP_VERSION,
+  exportedAt: new Date().toISOString(),
+  weeks, profile, eagles, conservation, activity,
+}, null, 2);
+
+function readBackup(text) {
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object") throw new Error("That file is not a backup.");
+  if (!Array.isArray(parsed.weeks)) throw new Error("That backup has no weekly log in it.");
+  return {
+    weeks: parsed.weeks,
+    profile: { ...SEED_PROFILE, ...(parsed.profile || {}) },
+    eagles: Array.isArray(parsed.eagles) ? parsed.eagles : [],
+    conservation: Array.isArray(parsed.conservation) ? parsed.conservation : [],
+    activity: Array.isArray(parsed.activity) ? parsed.activity : [],
+  };
+}
+
+// Published pages save through window.claude.downloads (the viewer confirms);
+// everywhere else, a plain blob download.
+async function saveFile(filename, data) {
+  try {
+    if (typeof window !== "undefined" && window.claude && window.claude.downloads) {
+      await window.claude.downloads.save({ filename, data });
+      return { ok: true };
+    }
+  } catch (err) {
+    const code = err && err.code;
+    if (code === "declined") return { ok: false, msg: "Backup cancelled." };
+    if (code === "rate_limited") return { ok: false, msg: "A save prompt is already open — finish that one first." };
+    if (code === "too_large") return { ok: false, msg: "Backup is too large to save here." };
+    // anything else: fall through to the blob path
+  }
+  try {
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, msg: "This browser blocked the download." };
   }
 }
 
@@ -727,10 +825,10 @@ export default function FHDProductionCommandCenter() {
       if (Array.isArray(e)) setEagles(e);
       if (Array.isArray(c) && c.length) setConservation(c);
       if (Array.isArray(a)) setActivity(a);
-      setPersistOk(hasStorage());
+      setPersistOk(storageDriver() !== "memory");
       setLoading(false);
-      // First run with no saved state: seed storage so the log survives reload.
-      if (hasStorage() && !Array.isArray(w)) {
+      // First run with no saved state: seed the store so the log survives reload.
+      if (!Array.isArray(w)) {
         await storeSet(K.weeks, SEED_WEEKS);
         await storeSet(K.profile, SEED_PROFILE);
         await storeSet(K.conservation, SEED_CONSERVATION);
@@ -753,7 +851,34 @@ export default function FHDProductionCommandCenter() {
   const commit = useCallback(async (key, value, setter) => {
     setter(value);
     const ok = await storeSet(key, value);
-    if (!ok && hasStorage()) say("Storage write failed — changes are in memory only.", "red");
+    if (!ok && storageDriver() !== "memory") say("Storage write failed — this change is in memory only. Export a backup.", "red");
+  }, [say]);
+
+  /* ------------------------------------------------------ backup / restore */
+
+  const exportBackup = useCallback(async () => {
+    const data = buildBackup(weeks, profile, eagles, conservation, activity);
+    const name = `fhd-backup-${isoDate(today)}.json`;
+    const res = await saveFile(name, data);
+    say(res.ok ? `Backup saved as ${name}.` : res.msg, res.ok ? "green" : "amber");
+  }, [weeks, profile, eagles, conservation, activity, today, say]);
+
+  const importBackup = useCallback(async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const b = readBackup(text);
+      if (!window.confirm(`Restore ${b.weeks.length} logged weeks from this backup? Everything currently in the dashboard is replaced.`)) return;
+      setWeeks(b.weeks); setProfile(b.profile); setEagles(b.eagles);
+      setConservation(b.conservation); setActivity(b.activity);
+      await Promise.all([
+        storeSet(K.weeks, b.weeks), storeSet(K.profile, b.profile), storeSet(K.eagles, b.eagles),
+        storeSet(K.conservation, b.conservation), storeSet(K.activity, b.activity),
+      ]);
+      say(`Restored ${b.weeks.length} weeks from backup.`, "green");
+    } catch (err) {
+      say(err && err.message ? err.message : "That file could not be read as a backup.", "red");
+    }
   }, [say]);
 
   /* ------------------------------------------------------------- handlers */
@@ -872,7 +997,8 @@ export default function FHDProductionCommandCenter() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-6xl px-3 pb-24 pt-4 sm:px-5">
         <DeadlineStrip model={model} go={setTab} />
-        <Header profile={profile} model={model} onReset={resetAll} persistOk={persistOk} />
+        <Header profile={profile} model={model} onReset={resetAll} persistOk={persistOk}
+          onExport={exportBackup} onImport={importBackup} />
         {model.thisMonth.failed ? <ActivityAlarm agg={model.thisMonth} /> : null}
         {celebration ? <Celebration hits={celebration} onClose={() => setCelebration(null)} /> : null}
         {flash ? (
@@ -911,7 +1037,9 @@ export default function FHDProductionCommandCenter() {
 
 /* ------------------------------------------------------------ shell pieces */
 
-function Header({ profile, model, onReset, persistOk }) {
+function Header({ profile, model, onReset, persistOk, onExport, onImport }) {
+  const fileRef = React.useRef(null);
+  const d = DRIVER_LABEL[storageDriver()];
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -923,12 +1051,26 @@ function Header({ profile, model, onReset, persistOk }) {
         </p>
         <p className="text-xs text-slate-500">{profile.productMix}</p>
       </div>
-      <div className="flex items-center gap-2">
-        {!persistOk ? <Chip tone="amber">Memory only</Chip> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={d.tone}>{d.text}</Chip>
+        <button onClick={onExport} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
+          <Save size={14} /> Backup
+        </button>
+        <button onClick={() => fileRef.current && fileRef.current.click()} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
+          <RefreshCw size={14} /> Restore
+        </button>
+        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden"
+          onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; onImport(f); }} />
         <button onClick={onReset} className={`${btnCls} border border-slate-700 bg-slate-900 text-slate-400`}>
-          <Trash2 size={14} /> Reset all data
+          <Trash2 size={14} /> Reset
         </button>
       </div>
+      {!persistOk ? (
+        <div className="w-full rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs font-semibold text-amber-300">
+          This browser is not letting the dashboard save anything. Entries last until you close the tab —
+          hit <span className="font-black">Backup</span> before you leave, and <span className="font-black">Restore</span> next time.
+        </div>
+      ) : null}
     </div>
   );
 }
