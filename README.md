@@ -38,3 +38,20 @@ days-at-current-pace.
 Loads populated with the agent's real 2026 log (weeks 17–31), A/T and CAI
 history, PR records, and open conservation items, so the dashboard renders full
 on first open. "Reset all data" restores this baseline behind a confirm.
+
+## Viewing it
+
+The `.jsx` is the source of record — paste it into a Claude conversation and it
+runs with real `window.storage` persistence.
+
+To render it as a standalone page instead:
+
+```
+npm install react react-dom recharts lucide-react tailwindcss@3
+.build/build.sh          # -> dist/fhd-command-center.html
+```
+
+The build inlines React, recharts, lucide and the generated Tailwind CSS into
+one file with no external requests, so it opens anywhere. A published page has
+no `window.storage`, so it runs in memory and shows a "Memory only" chip —
+entries last for the session but do not survive a reload.
