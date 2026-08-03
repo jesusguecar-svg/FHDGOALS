@@ -272,3 +272,4 @@ Then choose the weekly focus:
 - If activity is high but production is low: fix close rate and average case size.
 - If production is high but qualification risk remains: protect persistency and active app count.
 - If multipliers are available: prioritize products with higher production credit when suitable for the client.
+
