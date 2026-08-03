@@ -5,9 +5,21 @@ Family Heritage Division Sales Professional on the personal-production track.
 
 **File:** `FHDProductionCommandCenter.jsx` — default export, no required props.
 
+## Look
+
+Set as a 1994 printed production report: ledger stock, corporate navy masthead
+over an oxblood double rule, greenbar fanfold tables, Courier data columns,
+Georgia pull figures, and thermometer bars with printed tick marks. Urgency is
+a rubber stamp, not a throb.
+
+Status color keeps its meaning throughout — red missed, amber behind pace,
+green on pace, blue banked, gray not yet started — re-voiced in period ink.
+
 ## Stack
 - React (hooks only), `recharts`, `lucide-react`
-- Tailwind core utility classes only (no arbitrary values, no custom config)
+- Tailwind core utility classes only (no arbitrary values, no custom config), plus
+  one scoped `<style>` block for the type roles, rules and greenbar striping
+  that utilities can't express
 - Persistence via `window.storage` only — never `localStorage`/`sessionStorage`.
   Keys: `fhd:weeks`, `fhd:profile`, `fhd:eagles`, `fhd:conservation`, `fhd:activity`.
   Every call is wrapped in try/catch and degrades to in-memory state.

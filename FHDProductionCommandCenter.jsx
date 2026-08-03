@@ -405,13 +405,67 @@ async function saveFile(filename, data) {
 
 /* ------------------------------------------------------------ UI primitives */
 
+/* Status ink. The semantics are unchanged — red missed, amber behind pace,
+   green on pace, blue banked, gray not yet started — set in period colors:
+   oxblood, ochre, ledger green, corporate navy, pencil grey.               */
 const TONE = {
-  red:    { text: "text-red-400",     bar: "bg-red-500",     ring: "border-red-500",     soft: "bg-red-950",     chip: "bg-red-950 text-red-300 border-red-800" },
-  amber:  { text: "text-amber-400",   bar: "bg-amber-500",   ring: "border-amber-500",   soft: "bg-amber-950",   chip: "bg-amber-950 text-amber-300 border-amber-800" },
-  green:  { text: "text-emerald-400", bar: "bg-emerald-500", ring: "border-emerald-500", soft: "bg-emerald-950", chip: "bg-emerald-950 text-emerald-300 border-emerald-800" },
-  blue:   { text: "text-sky-400",     bar: "bg-sky-500",     ring: "border-sky-500",     soft: "bg-sky-950",     chip: "bg-sky-950 text-sky-300 border-sky-800" },
-  gray:   { text: "text-slate-400",   bar: "bg-slate-600",   ring: "border-slate-700",   soft: "bg-slate-900",   chip: "bg-slate-800 text-slate-300 border-slate-700" },
+  red:    { text: "text-red-800",     bar: "bg-red-800",     ring: "border-red-800",     soft: "bg-red-50",     chip: "bg-red-50 text-red-900 border-red-800" },
+  amber:  { text: "text-yellow-800",  bar: "bg-yellow-700",  ring: "border-yellow-700",  soft: "bg-yellow-50",  chip: "bg-yellow-50 text-yellow-900 border-yellow-700" },
+  green:  { text: "text-emerald-800", bar: "bg-emerald-700", ring: "border-emerald-700", soft: "bg-emerald-50", chip: "bg-emerald-50 text-emerald-900 border-emerald-700" },
+  blue:   { text: "text-blue-900",    bar: "bg-blue-900",    ring: "border-blue-900",    soft: "bg-blue-50",    chip: "bg-blue-50 text-blue-900 border-blue-900" },
+  gray:   { text: "text-stone-600",   bar: "bg-stone-400",   ring: "border-stone-300",   soft: "bg-stone-100",  chip: "bg-stone-200 text-stone-700 border-stone-400" },
 };
+
+/* Chart ink, same semantics. Recharts needs literal values. */
+const INK = {
+  navy: "#1e3a8a", oxblood: "#7f1d1d", ledger: "#047857", ochre: "#a16207",
+  pencil: "#a8a29e", rule: "#d6d3d1", paper: "#f5f5f4",
+};
+
+/* The period styling that Tailwind utilities can't carry: the three type
+   roles, the annual-report double rule, small-caps captions, greenbar
+   striping, the brass plaque, and the urgent stamp. Scoped to .fhd so it
+   travels with the component into any surface.                            */
+const REPORT_CSS = `
+.fhd {
+  --paper: #e7e5dc; --ink: #1c1917; --navy: #1e3a8a; --oxblood: #7f1d1d;
+  background-color: var(--paper);
+  font-family: Helvetica, "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.fhd-display { font-family: Georgia, "Times New Roman", Times, serif; letter-spacing: -0.02em; }
+.fhd-figure { font-family: Georgia, "Times New Roman", Times, serif; letter-spacing: -0.03em; font-variant-numeric: tabular-nums lining-nums; }
+.fhd-data, .fhd table, .fhd input, .fhd textarea { font-family: "Courier New", Courier, ui-monospace, monospace; }
+.fhd-caption {
+  font-variant: small-caps; letter-spacing: 0.14em; font-weight: 700;
+  border-bottom: 1px solid var(--ink); padding-bottom: 2px; display: block;
+}
+/* Thick-then-thin: the rule that sits under every annual report masthead. */
+.fhd-rule-double { border-top: 4px solid var(--oxblood); box-shadow: 0 3px 0 -1px var(--ink); }
+.fhd-panel { box-shadow: 1px 1px 0 0 rgba(28,25,23,0.18); }
+/* Greenbar fanfold: every other row printed on the stripe. */
+.fhd-greenbar tbody tr:nth-child(even) { background-color: #e3ece4; }
+.fhd-greenbar tbody tr:nth-child(odd) { background-color: #faf9f6; }
+.fhd-plaque {
+  background-image: linear-gradient(160deg, #b08d3f 0%, #e6d29a 42%, #a8842c 100%);
+  color: #221c0c; border: 1px solid #6f5a1d;
+}
+.fhd-stamp {
+  color: var(--oxblood); border: 2px solid var(--oxblood); border-radius: 2px;
+  font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase;
+  transform: rotate(-4deg); padding: 1px 6px; font-size: 10px; display: inline-block;
+}
+.fhd-urgent { border-width: 2px; border-color: var(--oxblood); }
+/* Thermometer ticks along the bar track, like a printed goal chart. */
+.fhd-thermo {
+  background-image: repeating-linear-gradient(90deg, rgba(28,25,23,0.22) 0 1px, transparent 1px 10%);
+  border: 1px solid #a8a29e;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .fhd-blink { animation: fhd-blink 1.6s steps(1, end) infinite; }
+  @keyframes fhd-blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.35; } }
+}
+`;
 
 // Urgency by days remaining: inside 14 = red + pulse, 15–30 = amber, 30+ = neutral.
 const urgencyTone = (days) => {
@@ -426,7 +480,7 @@ const urgencyPulse = (days) => days !== null && days !== undefined && days >= 0 
 function Panel({ children, className = "", tone = "gray", pulse = false }) {
   const t = TONE[tone] || TONE.gray;
   return (
-    <div className={`rounded-xl border ${t.ring} bg-slate-900 p-4 ${pulse ? "animate-pulse" : ""} ${className}`}>
+    <div className={`fhd-panel border ${t.ring} bg-stone-50 p-4 ${pulse ? "fhd-urgent" : ""} ${className}`}>
       {children}
     </div>
   );
@@ -435,7 +489,7 @@ function Panel({ children, className = "", tone = "gray", pulse = false }) {
 function Chip({ children, tone = "gray", className = "" }) {
   const t = TONE[tone] || TONE.gray;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${t.chip} ${className}`}>
+    <span className={`inline-flex items-center gap-1 border px-2 py-0.5 text-xs font-bold uppercase tracking-widest ${t.chip} ${className}`}>
       {children}
     </span>
   );
@@ -451,15 +505,15 @@ function ProgressBar({ current, target, tone, label, unit = "$", showGap = true,
   const f = (n) => (unit === "$" ? money(n) : `${Math.round(n).toLocaleString()}${unit === "" ? "" : " " + unit}`);
   return (
     <div className="w-full">
-      {label ? <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</div> : null}
-      <div className={`w-full overflow-hidden rounded-full bg-slate-800 ${height}`}>
-        <div className={`${t.bar} ${height} rounded-full`} style={{ width: `${p}%` }} />
+      {label ? <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-stone-600">{label}</div> : null}
+      <div className={`fhd-thermo w-full overflow-hidden bg-stone-100 ${height}`}>
+        <div className={`${t.bar} ${height}`} style={{ width: `${p}%` }} />
       </div>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs">
-        <span className={`font-bold ${t.text}`}>{f(cur)}<span className="text-slate-500"> / {f(tgt)}</span></span>
-        <span className="text-slate-400">
-          {showGap ? (gap > 0 ? <>gap <span className="font-bold text-slate-200">{f(gap)}</span> · </> : <span className="font-bold text-sky-400">CLEARED · </span>) : null}
-          <span className="font-semibold text-slate-300">{p.toFixed(0)}%</span>
+        <span className={`font-bold ${t.text}`}>{f(cur)}<span className="text-stone-500"> / {f(tgt)}</span></span>
+        <span className="text-stone-600">
+          {showGap ? (gap > 0 ? <>gap <span className="font-bold text-stone-800">{f(gap)}</span> · </> : <span className="font-bold text-blue-900">CLEARED · </span>) : null}
+          <span className="font-semibold text-stone-700">{p.toFixed(0)}%</span>
         </span>
       </div>
     </div>
@@ -476,11 +530,11 @@ function Countdown({ date, label, compact = false }) {
   const txt = days < 0 ? `${Math.abs(days)}d PAST` : days === 0 ? "TODAY" : `${days}d`;
   if (compact) return <span className={`font-bold ${t.text}`}>{txt}</span>;
   return (
-    <div className={`rounded-lg border ${t.ring} ${t.soft} px-3 py-2 ${pulse ? "animate-pulse" : ""}`}>
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">{label}</div>
+    <div className={`rounded-none border ${t.ring} ${t.soft} px-3 py-2 ${pulse ? "fhd-urgent" : ""}`}>
+      <div className="text-xs font-semibold uppercase tracking-wide text-stone-700">{label}</div>
       <div className="flex items-baseline gap-2">
         <span className={`text-2xl font-black ${t.text}`}>{txt}</span>
-        <span className="text-xs text-slate-400">{fmtLong(dt)}</span>
+        <span className="text-xs text-stone-600">{fmtLong(dt)}</span>
       </div>
     </div>
   );
@@ -490,31 +544,31 @@ function Stat({ label, value, sub, tone = "gray", size = "text-2xl" }) {
   const t = TONE[tone] || TONE.gray;
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`${size} font-black ${t.text}`}>{value}</div>
-      {sub ? <div className="text-xs text-slate-400">{sub}</div> : null}
+      <div className="text-xs font-bold uppercase tracking-widest text-stone-500">{label}</div>
+      <div className={`fhd-figure ${size} font-bold ${t.text}`}>{value}</div>
+      {sub ? <div className="text-xs text-stone-600">{sub}</div> : null}
     </div>
   );
 }
 
 function RuleBox({ title, children }) {
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-950 p-4">
-      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
-        <Shield size={14} /> {title || "Official rule"}
+    <div className="border border-stone-900 bg-stone-100 p-4">
+      <div className="mb-2 flex items-center gap-2 border-b border-stone-400 pb-1 text-xs font-bold uppercase tracking-widest text-stone-900">
+        <Shield size={13} /> {title || "Official rule"}
       </div>
-      <div className="space-y-1 text-sm leading-relaxed text-slate-300">{children}</div>
+      <div className="space-y-1 text-sm leading-relaxed text-stone-700">{children}</div>
     </div>
   );
 }
 
 function SectionTitle({ icon: Icon, children, sub }) {
   return (
-    <div className="mb-3 flex items-start gap-3">
-      <div className="rounded-lg bg-slate-800 p-2 text-sky-400">{Icon ? <Icon size={20} /> : null}</div>
+    <div className="fhd-rule-double mb-4 flex items-start gap-3 pt-2">
+      <div className="p-1 text-red-900">{Icon ? <Icon size={20} /> : null}</div>
       <div>
-        <h2 className="text-xl font-black uppercase tracking-wide text-slate-100">{children}</h2>
-        {sub ? <p className="text-xs text-slate-400">{sub}</p> : null}
+        <h2 className="fhd-display text-2xl font-bold text-stone-900">{children}</h2>
+        {sub ? <p className="text-xs text-stone-600">{sub}</p> : null}
       </div>
     </div>
   );
@@ -526,9 +580,9 @@ function GapTriad({ dollars, dailyNap, className = "" }) {
   const days = dailyNap > 0 ? Math.ceil(d / dailyNap) : null;
   return (
     <div className={`flex flex-wrap items-center gap-2 text-xs ${className}`}>
-      <span className="rounded border border-slate-700 bg-slate-800 px-2 py-1 font-bold text-slate-100">{money(d)}</span>
-      <span className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-300">≈ {appsFor(d)} apps</span>
-      <span className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-300">
+      <span className="rounded-none border border-stone-400 bg-stone-200 px-2 py-1 font-bold text-stone-900">{money(d)}</span>
+      <span className="rounded-none border border-stone-400 bg-stone-200 px-2 py-1 text-stone-700">≈ {appsFor(d)} apps</span>
+      <span className="rounded-none border border-stone-400 bg-stone-200 px-2 py-1 text-stone-700">
         {days === null ? "pace 0 — never at current rate" : `${days}d at current pace`}
       </span>
     </div>
@@ -536,17 +590,17 @@ function GapTriad({ dollars, dailyNap, className = "" }) {
 }
 
 function Table({ headers, rows, empty = "No records yet." }) {
-  if (!rows || rows.length === 0) return <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">{empty}</div>;
+  if (!rows || rows.length === 0) return <div className="rounded-none border border-stone-300 bg-stone-100 p-4 text-sm text-stone-500">{empty}</div>;
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-800">
-      <table className="w-full min-w-full text-left text-sm">
-        <thead className="bg-slate-800 text-xs uppercase tracking-wide text-slate-400">
+    <div className="overflow-x-auto border border-stone-900">
+      <table className="fhd-greenbar w-full min-w-full text-left text-sm">
+        <thead className="border-b-2 border-stone-900 bg-stone-200 text-xs uppercase tracking-widest text-stone-900">
           <tr>{headers.map((h, i) => <th key={i} className="whitespace-nowrap px-3 py-2 font-bold">{h}</th>)}</tr>
         </thead>
-        <tbody className="divide-y divide-slate-800 bg-slate-950">
+        <tbody className="divide-y divide-stone-300">
           {rows.map((r, i) => (
-            <tr key={i} className="hover:bg-slate-900">
-              {r.map((c, j) => <td key={j} className="whitespace-nowrap px-3 py-2 text-slate-300">{c}</td>)}
+            <tr key={i} className="hover:bg-yellow-50">
+              {r.map((c, j) => <td key={j} className="whitespace-nowrap px-3 py-2 text-stone-700">{c}</td>)}
             </tr>
           ))}
         </tbody>
@@ -558,15 +612,15 @@ function Table({ headers, rows, empty = "No records yet." }) {
 function Field({ label, children, hint }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-stone-600">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-xs text-slate-500">{hint}</span> : null}
+      {hint ? <span className="mt-1 block text-xs text-stone-500">{hint}</span> : null}
     </label>
   );
 }
 
-const inputCls = "w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-sky-500";
-const btnCls = "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold uppercase tracking-wide";
+const inputCls = "w-full border border-stone-900 bg-white px-3 py-2 text-stone-900 outline-none focus:border-blue-900 focus:bg-yellow-50";
+const btnCls = "inline-flex items-center justify-center gap-2 border px-4 py-2 text-xs font-bold uppercase tracking-widest";
 
 /* ============================================================================
    DERIVED MODEL — every FHD rule computed live off the weekly log
@@ -1033,12 +1087,12 @@ export default function FHDProductionCommandCenter() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 p-6 text-slate-100">
+      <div className="fhd min-h-screen p-6 text-stone-900">
         <div className="mx-auto max-w-md pt-24 text-center">
-          <Flame className="mx-auto animate-pulse text-sky-500" size={48} />
-          <p className="mt-4 text-lg font-black uppercase tracking-widest text-slate-300">Loading production data…</p>
-          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-            <div className="h-2 w-1/2 animate-pulse rounded-full bg-sky-500" />
+          <Flame className="mx-auto text-red-900" size={48} />
+          <p className="mt-4 text-lg font-black uppercase tracking-widest text-stone-700">Loading production data…</p>
+          <div className="mt-4 h-2 w-full overflow-hidden border border-stone-400 bg-stone-100">
+            <div className="h-2 w-1/2 animate-pulse bg-blue-900" />
           </div>
         </div>
       </div>
@@ -1046,7 +1100,8 @@ export default function FHDProductionCommandCenter() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="fhd min-h-screen text-stone-900">
+      <style>{REPORT_CSS}</style>
       <div className="mx-auto max-w-6xl px-3 pb-24 pt-4 sm:px-5">
         <DeadlineStrip model={model} go={setTab} />
         <Header profile={profile} model={model} onReset={resetAll} persistOk={persistOk}
@@ -1055,18 +1110,18 @@ export default function FHDProductionCommandCenter() {
         {model.thisMonth.failed ? <ActivityAlarm agg={model.thisMonth} /> : null}
         {celebration ? <Celebration hits={celebration} onClose={() => setCelebration(null)} /> : null}
         {flash ? (
-          <div className={`mb-3 rounded-lg border px-3 py-2 text-sm font-semibold ${TONE[flash.tone].chip}`}>{flash.msg}</div>
+          <div className={`mb-3 rounded-none border px-3 py-2 text-sm font-semibold ${TONE[flash.tone].chip}`}>{flash.msg}</div>
         ) : null}
 
-        <nav className="sticky top-0 z-10 -mx-3 mb-4 flex gap-1 overflow-x-auto bg-slate-950 px-3 py-2 sm:mx-0 sm:px-0">
+        <nav className="sticky top-0 z-10 -mx-3 mb-4 flex gap-px overflow-x-auto border-b-2 border-stone-900 px-3 pt-2 sm:mx-0 sm:px-0" style={{ backgroundColor: "#e7e5dc" }}>
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex shrink-0 items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold uppercase tracking-wide ${
-                  active ? "border-sky-500 bg-sky-950 text-sky-300" : "border-slate-800 bg-slate-900 text-slate-400"}`}>
-                <Icon size={14} /> {t.label}
+                className={`flex shrink-0 items-center gap-1 border border-b-0 px-3 py-2 text-xs font-bold uppercase tracking-widest ${
+                  active ? "border-stone-900 bg-stone-50 text-stone-900" : "border-stone-400 bg-stone-200 text-stone-600"}`}>
+                <Icon size={13} /> {t.label}
               </button>
             );
           })}
@@ -1106,29 +1161,29 @@ function SyncPanel({ syncCode, onRestoreText, say, weekCount, onClose }) {
   };
 
   return (
-    <div className="w-full rounded-xl border border-sky-800 bg-slate-900 p-4">
+    <div className="w-full rounded-none border border-blue-900 bg-stone-50 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-black uppercase tracking-widest text-sky-400">Move the log between devices</span>
-        <button onClick={onClose} className="text-slate-500"><XCircle size={18} /></button>
+        <span className="text-xs font-black uppercase tracking-widest text-blue-900">Move the log between devices</span>
+        <button onClick={onClose} className="text-stone-500"><XCircle size={18} /></button>
       </div>
-      <p className="mb-3 text-xs text-slate-400">
+      <p className="mb-3 text-xs text-stone-600">
         Each device keeps its own copy. Copy the code here, paste it there — text it to yourself, email it, whatever's fastest.
         Whichever device you paste into gets replaced by the log you copied, so copy from the one you logged on last.
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-300">1 · On the device you just logged on</div>
-          <button onClick={copy} className={`${btnCls} w-full bg-sky-600 text-white`}>Copy sync code ({weekCount} weeks)</button>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-stone-700">1 · On the device you just logged on</div>
+          <button onClick={copy} className={`${btnCls} w-full border-blue-900 bg-blue-900 text-white`}>Copy sync code ({weekCount} weeks)</button>
           {code ? (
             <textarea readOnly value={code} rows={4} onFocus={(e) => e.target.select()}
-              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-400" />
+              className="mt-2 w-full rounded-none border border-stone-400 bg-stone-100 p-2 text-xs text-stone-600" />
           ) : null}
         </div>
         <div>
-          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-300">2 · On the other device</div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-stone-700">2 · On the other device</div>
           <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} placeholder="Paste the sync code here…"
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-100 outline-none focus:border-sky-500" />
-          <button onClick={() => { onRestoreText(paste); setPaste(""); }} className={`${btnCls} mt-2 w-full bg-emerald-600 text-white`}>
+            className="w-full rounded-none border border-stone-400 bg-stone-100 p-2 text-xs text-stone-900 outline-none focus:border-blue-900" />
+          <button onClick={() => { onRestoreText(paste); setPaste(""); }} className={`${btnCls} mt-2 w-full border-emerald-800 bg-emerald-800 text-white`}>
             Load this log onto this device
           </button>
         </div>
@@ -1142,35 +1197,54 @@ function Header({ profile, model, onReset, persistOk, onExport, onImport, onRest
   const [showSync, setShowSync] = useState(false);
   const d = DRIVER_LABEL[storageDriver()];
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-black uppercase tracking-widest text-slate-100 sm:text-3xl">
-          FHD Production <span className="text-sky-400">Command Center</span>
+    <div className="mb-5">
+      <div className="flex flex-wrap items-end justify-between gap-2 bg-blue-900 px-3 py-2 text-white">
+        <h1 className="fhd-display text-2xl font-bold sm:text-3xl">
+          FHD Production Command Center
         </h1>
-        <p className="text-xs text-slate-400">
-          {profile.name} · Agent #{profile.agentNumber} · Director {profile.director} ({profile.directorNumber})
-        </p>
-        <p className="text-xs text-slate-500">{profile.productMix}</p>
+        <span className="text-xs font-bold uppercase tracking-widest text-blue-100">
+          Personal Production Report
+        </span>
       </div>
+      <div className="fhd-rule-double mb-3" />
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 pt-2">
+        <dl className="fhd-data grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">
+          {[
+            ["Sales Prof.", `${profile.name}`],
+            ["Agent no.", profile.agentNumber],
+            ["Sales Dir.", `${profile.director} (${profile.directorNumber})`],
+            ["Report date", fmtLong(model.today)],
+            ["Sales week", `${model.currentWeek} — ${weekRange(model.currentWeek)}`],
+            ["Sales month", model.currentMonth.label],
+            ["Product", profile.productMix],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-xs uppercase tracking-widest text-stone-500">{k}</dt>
+              <dd className="font-bold text-stone-900">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={d.tone}>{d.text}</Chip>
-        <button onClick={() => setShowSync((v) => !v)} className={`${btnCls} bg-sky-600 text-white`}>
-          <RefreshCw size={14} /> Phone ↔ Laptop
+        <button onClick={() => setShowSync((v) => !v)} className={`${btnCls} border-blue-900 bg-blue-900 text-white`}>
+          <RefreshCw size={13} /> Phone / Laptop
         </button>
-        <button onClick={onExport} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
+        <button onClick={onExport} className={`${btnCls} border-stone-900 bg-stone-200 text-stone-900`}>
           <Save size={14} /> Backup
         </button>
-        <button onClick={() => fileRef.current && fileRef.current.click()} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
+        <button onClick={() => fileRef.current && fileRef.current.click()} className={`${btnCls} border-stone-900 bg-stone-200 text-stone-900`}>
           <RefreshCw size={14} /> Restore
         </button>
         <input ref={fileRef} type="file" accept="application/json,.json" className="hidden"
           onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; onImport(f); }} />
-        <button onClick={onReset} className={`${btnCls} border border-slate-700 bg-slate-900 text-slate-400`}>
+        <button onClick={onReset} className={`${btnCls} border-stone-400 bg-stone-50 text-stone-600`}>
           <Trash2 size={14} /> Reset
         </button>
       </div>
       {!persistOk ? (
-        <div className="w-full rounded-lg border border-amber-800 bg-amber-950 px-3 py-2 text-xs font-semibold text-amber-300">
+        <div className="w-full rounded-none border border-amber-800 bg-yellow-50 px-3 py-2 text-xs font-semibold text-amber-300">
           This browser is not letting the dashboard save anything. Entries last until you close the tab —
           hit <span className="font-black">Backup</span> before you leave, and <span className="font-black">Restore</span> next time.
         </div>
@@ -1178,6 +1252,7 @@ function Header({ profile, model, onReset, persistOk, onExport, onImport, onRest
       {showSync ? (
         <SyncPanel syncCode={syncCode} onRestoreText={onRestoreText} say={say} weekCount={weekCount} onClose={() => setShowSync(false)} />
       ) : null}
+      </div>
     </div>
   );
 }
@@ -1185,9 +1260,9 @@ function Header({ profile, model, onReset, persistOk, onExport, onImport, onRest
 function DeadlineStrip({ model, go }) {
   const three = model.deadlines.slice(0, 3);
   return (
-    <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900 p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
-        <Clock size={14} /> Nearest deadlines
+    <div className="fhd-panel mb-4 border border-stone-900 bg-stone-50 p-3">
+      <div className="mb-2 flex items-center gap-2 border-b border-stone-900 pb-1 text-xs font-bold uppercase tracking-widest text-stone-900">
+        <Clock size={13} /> Nearest deadlines
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {three.map((d) => {
@@ -1196,13 +1271,16 @@ function DeadlineStrip({ model, go }) {
           const t = TONE[tone];
           return (
             <button key={d.id} onClick={() => go(d.tab)}
-              className={`rounded-lg border ${t.ring} ${t.soft} p-3 text-left ${urgencyPulse(days) ? "animate-pulse" : ""}`}>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-3xl font-black ${t.text}`}>{days < 0 ? "—" : days}</span>
-                <span className="text-xs font-bold uppercase text-slate-400">{days === 1 ? "day" : "days"}</span>
+              className={`border ${t.ring} ${t.soft} p-3 text-left ${urgencyPulse(days) ? "fhd-urgent" : ""}`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="flex items-baseline gap-2">
+                  <span className={`fhd-figure text-4xl font-bold ${t.text}`}>{days < 0 ? "—" : days}</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-stone-600">{days === 1 ? "day" : "days"}</span>
+                </span>
+                {urgencyPulse(days) ? <span className="fhd-stamp fhd-blink">Urgent</span> : null}
               </div>
-              <div className="text-xs font-semibold text-slate-200">{d.label}</div>
-              <div className="text-xs text-slate-500">{fmtLong(d.date)}</div>
+              <div className="text-xs font-bold text-stone-900">{d.label}</div>
+              <div className="fhd-data text-xs text-stone-500">{fmtLong(d.date)}</div>
             </button>
           );
         })}
@@ -1213,11 +1291,14 @@ function DeadlineStrip({ model, go }) {
 
 function ActivityAlarm({ agg }) {
   return (
-    <div className="mb-4 animate-pulse rounded-xl border-2 border-red-500 bg-red-950 p-4">
-      <div className="flex items-center gap-2 text-lg font-black uppercase tracking-widest text-red-300">
-        <AlertTriangle size={22} /> Activity minimum failed — {agg.month.label}
+    <div className="fhd-panel mb-4 border-2 border-red-900 bg-red-50 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="fhd-stamp fhd-blink">Exception</span>
+        <span className="fhd-display text-xl font-bold text-red-900">
+          Activity minimum failed — {agg.month.label}
+        </span>
       </div>
-      <p className="mt-1 text-sm text-red-200">
+      <p className="mt-1 text-sm text-red-900">
         {agg.weeksProduced} of {agg.required} required production weeks logged, with {agg.weeksRemaining} week
         {agg.weeksRemaining === 1 ? "" : "s"} left. The requirement can no longer be met.
         <span className="font-black"> Monthly Cash Bonus for {agg.month.label} pays $0 regardless of NAP ({money(agg.nap)} logged).</span>
@@ -1228,21 +1309,21 @@ function ActivityAlarm({ agg }) {
 
 function Celebration({ hits, onClose }) {
   return (
-    <div className="mb-4 rounded-xl border-2 border-sky-500 bg-sky-950 p-4">
+    <div className="fhd-plaque fhd-panel mb-4 border-2 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-lg font-black uppercase tracking-widest text-sky-300">
-            <Trophy className="animate-bounce" size={22} /> New personal record
+          <div className="fhd-display flex items-center gap-2 text-xl font-bold">
+            <Trophy size={20} /> New personal record
           </div>
           <ul className="mt-2 space-y-1">
             {hits.map((h, i) => (
-              <li key={i} className="text-sm font-bold text-sky-100">
-                <span className="mr-2 inline-block animate-ping rounded-full bg-sky-400 p-1 align-middle" />{h}
+              <li key={i} className="text-sm font-bold">
+                <span className="mr-2 inline-block h-2 w-2 bg-stone-900 align-middle" />{h}
               </li>
             ))}
           </ul>
         </div>
-        <button onClick={onClose} className="text-slate-400"><XCircle size={20} /></button>
+        <button onClick={onClose} className="text-stone-600"><XCircle size={20} /></button>
       </div>
     </div>
   );
@@ -1256,12 +1337,12 @@ function Card({ title, icon: Icon, tone = "gray", onClick, children, pulse = fal
   const t = TONE[tone] || TONE.gray;
   return (
     <button onClick={onClick}
-      className={`w-full rounded-xl border ${t.ring} bg-slate-900 p-4 text-left ${pulse ? "animate-pulse" : ""}`}>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
-          {Icon ? <Icon size={14} /> : null} {title}
+      className={`fhd-panel w-full border ${t.ring} bg-stone-50 p-4 text-left ${pulse ? "fhd-urgent" : ""}`}>
+      <div className="mb-3 flex items-center justify-between border-b border-stone-900 pb-1">
+        <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-900">
+          {Icon ? <Icon size={13} /> : null} {title}
         </span>
-        <ChevronRight size={16} className="text-slate-600" />
+        {pulse ? <span className="fhd-stamp fhd-blink">Action req'd</span> : <ChevronRight size={14} className="text-stone-400" />}
       </div>
       {children}
     </button>
@@ -1279,22 +1360,22 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
     <div className="space-y-4">
       {/* Hero numbers: current week NAP + gap to next milestone are the biggest text on screen. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className={`rounded-xl border ${TONE[weekTone].ring} bg-slate-900 p-5`}>
-          <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+        <div className={`fhd-panel border ${TONE[weekTone].ring} bg-stone-50 p-5`}>
+          <div className="fhd-caption text-xs text-stone-900">
             Week {m.currentWeek} NAP · {weekRange(m.currentWeek)}
           </div>
-          <div className={`text-6xl font-black leading-none ${TONE[weekTone].text} sm:text-7xl`}>{money(m.curWeekNap)}</div>
-          <div className="mt-2 text-sm font-bold text-slate-300">
+          <div className={`fhd-figure mt-2 text-6xl font-bold leading-none ${TONE[weekTone].text} sm:text-7xl`}>{money(m.curWeekNap)}</div>
+          <div className="mt-2 text-sm font-bold text-stone-700">
             {m.daysLeftInWeek} day{m.daysLeftInWeek === 1 ? "" : "s"} left in this sales week
             {m.curWeekEntry?.unconfirmed ? <Chip tone="amber" className="ml-2">Unconfirmed</Chip> : null}
           </div>
         </div>
-        <div className="rounded-xl border border-sky-800 bg-slate-900 p-5">
-          <div className="text-xs font-black uppercase tracking-widest text-slate-400">Gap to next milestone</div>
-          <div className="text-6xl font-black leading-none text-amber-400 sm:text-7xl">
+        <div className="fhd-panel border border-stone-900 bg-stone-50 p-5">
+          <div className="fhd-caption text-xs text-stone-900">Gap to next milestone</div>
+          <div className="fhd-figure mt-2 text-6xl font-bold leading-none text-yellow-800 sm:text-7xl">
             {nextTarget ? money(nextTarget.amount) : "—"}
           </div>
-          <div className="mt-2 text-sm font-bold text-slate-300">
+          <div className="mt-2 text-sm font-bold text-stone-700">
             {nextTarget ? `${nextTarget.unlocks[0]} · ≈${nextTarget.apps} apps · ${nextTarget.daysLeft}d left` : "Everything in range is cleared."}
           </div>
         </div>
@@ -1305,32 +1386,32 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
         <Card title="This Week" icon={Calendar} tone={weekTone} onClick={() => go("weekly")}>
           <Stat label={`Sales week ${m.currentWeek}`} value={money(m.curWeekNap)} tone={weekTone} sub={weekRange(m.currentWeek)} size="text-3xl" />
           <div className="mt-3"><ProgressBar current={m.curWeekNap} target={GREEN_OUT} label="Green Out ($5,000)" /></div>
-          <div className="mt-2 text-xs text-slate-400">
-            {m.daysLeftInWeek} days remaining · gap to Green Out <span className="font-bold text-slate-100">{money(Math.max(0, GREEN_OUT - m.curWeekNap))}</span>
+          <div className="mt-2 text-xs text-stone-600">
+            {m.daysLeftInWeek} days remaining · gap to Green Out <span className="font-bold text-stone-900">{money(Math.max(0, GREEN_OUT - m.curWeekNap))}</span>
           </div>
         </Card>
 
         {/* THIS MONTH */}
         <Card title="This Month" icon={DollarSign} tone={m.thisMonth.failed ? "red" : m.thisMonth.nap > 0 ? "amber" : "gray"} onClick={() => go("monthly")}>
           <Stat label={m.currentMonth.label} value={money(m.thisMonth.nap)} tone={m.thisMonth.failed ? "red" : "amber"} sub={`${monthRange(m.currentMonth)} · ${m.currentMonth.weeks.length} weeks`} size="text-3xl" />
-          <div className="mt-2 text-xs text-slate-400">
-            Weeks used: <span className="font-bold text-slate-200">{m.thisMonth.weeksUsed}/{m.currentMonth.weeks.length}</span> ·
-            Tier: <span className="font-bold text-slate-200">{m.thisMonth.tier.bonus ? money(m.thisMonth.tier.bonus) : "none"}</span>
+          <div className="mt-2 text-xs text-stone-600">
+            Weeks used: <span className="font-bold text-stone-800">{m.thisMonth.weeksUsed}/{m.currentMonth.weeks.length}</span> ·
+            Tier: <span className="font-bold text-stone-800">{m.thisMonth.tier.bonus ? money(m.thisMonth.tier.bonus) : "none"}</span>
           </div>
-          <div className="mt-2 rounded-lg border border-slate-700 bg-slate-950 p-2">
-            <div className="text-xs uppercase tracking-wide text-slate-500">Projected payout after A/T</div>
-            <div className={`text-2xl font-black ${m.thisMonth.payout > 0 ? "text-emerald-400" : "text-red-400"}`}>
+          <div className="mt-2 rounded-none border border-stone-400 bg-stone-100 p-2">
+            <div className="text-xs uppercase tracking-wide text-stone-500">Projected payout after A/T</div>
+            <div className={`text-2xl font-black ${m.thisMonth.payout > 0 ? "text-emerald-800" : "text-red-800"}`}>
               {money(m.thisMonth.payout)}
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-stone-500">
               {m.thisMonth.failed ? "Activity minimum failed — pays $0" : `${money(m.thisMonth.tier.bonus)} tier × ${pct(m.multiplier, 1)} multiplier`}
             </div>
           </div>
-          <div className="mt-2 text-xs text-slate-400">{monthEndDays} days left in sales month</div>
+          <div className="mt-2 text-xs text-stone-600">{monthEndDays} days left in sales month</div>
         </Card>
 
         {/* ACTIVITY MINIMUM */}
-        <Card title="⚠️ Activity Minimum" icon={AlertTriangle}
+        <Card title="Activity Minimum" icon={AlertTriangle}
           tone={m.thisMonth.failed ? "red" : m.thisMonth.met ? "blue" : m.thisMonth.mustRunTheTable ? "red" : "amber"}
           pulse={m.thisMonth.failed || m.thisMonth.mustRunTheTable}
           onClick={() => go("monthly")}>
@@ -1338,7 +1419,7 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
             value={`${m.thisMonth.weeksProduced} / ${m.thisMonth.required}`}
             tone={m.thisMonth.failed ? "red" : m.thisMonth.met ? "blue" : "amber"} size="text-3xl" />
           <div className="mt-2"><ProgressBar current={m.thisMonth.weeksProduced} target={m.thisMonth.required} unit="wks" /></div>
-          <div className={`mt-2 text-xs font-bold ${m.thisMonth.failed ? "text-red-400" : m.thisMonth.mustRunTheTable ? "text-red-400" : "text-slate-300"}`}>
+          <div className={`mt-2 text-xs font-bold ${m.thisMonth.failed ? "text-red-800" : m.thisMonth.mustRunTheTable ? "text-red-800" : "text-stone-700"}`}>
             {m.thisMonth.failed
               ? "FAILED — bonus pays $0 this month regardless of NAP."
               : m.thisMonth.met
@@ -1355,22 +1436,22 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
           {m.stringNextThisWeek ? (
             <div className="mt-3">
               <ProgressBar current={m.curWeekNap} target={m.stringNextThisWeek.nap} label={`This week → ${m.stringNextThisWeek.name}`} />
-              <div className="mt-1 text-xs text-slate-400">
-                Gap in a single week: <span className="font-bold text-slate-100">{money(Math.max(0, m.stringNextThisWeek.nap - m.curWeekNap))}</span>
+              <div className="mt-1 text-xs text-stone-600">
+                Gap in a single week: <span className="font-bold text-stone-900">{money(Math.max(0, m.stringNextThisWeek.nap - m.curWeekNap))}</span>
               </div>
             </div>
-          ) : <div className="mt-3 text-sm font-bold text-sky-400">Soaring Eagle cleared.</div>}
+          ) : <div className="mt-3 text-sm font-bold text-blue-900">Soaring Eagle cleared.</div>}
         </Card>
 
         {/* GLU 101 */}
         <Card title="GLU 101" icon={Award} tone={glu.qualified ? "blue" : glu.expired ? "red" : urgencyTone(glu.qualDaysLeft)}
           pulse={urgencyPulse(glu.qualDaysLeft) && !glu.qualified} onClick={() => go("glu")}>
-          <div className="text-xs text-slate-400">{glu.label}</div>
+          <div className="text-xs text-stone-600">{glu.label}</div>
           <div className="mt-2 space-y-2">
             <ProgressBar current={glu.greenOuts} target={GLU_GREENOUT_TARGET} label="Green-Outs banked" unit="" />
             <ProgressBar current={glu.napInWindow} target={GLU_NAP_TARGET} label="NAP in window" />
           </div>
-          <div className="mt-2 text-xs text-slate-400">
+          <div className="mt-2 text-xs text-stone-600">
             Qualification window: <span className={`font-bold ${TONE[urgencyTone(glu.qualDaysLeft)].text}`}>{glu.qualDaysLeft}d</span>
             {glu.reg ? <> · Registration {glu.regOpenIn > 0 ? `opens in ${glu.regOpenIn}d` : `closes in ${glu.regDaysLeft}d`}</> : null}
           </div>
@@ -1380,21 +1461,21 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
         <Card title="A/T Quality" icon={Shield} tone={atTone} onClick={() => go("quality")}>
           <Stat label="12-month A/T ratio" value={pct(m.atRatio, 1)} tone={atTone} sub={`Multiplier applied: ${pct(m.multiplier, 1)}${m.protectedNow ? " (new-agent protection)" : ""}`} size="text-4xl" />
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded border border-slate-700 bg-slate-950 p-2">
-              <div className="uppercase text-slate-500">To 85% floor</div>
-              <div className={`font-black ${m.atRatio >= AT_FLOOR ? "text-emerald-400" : "text-red-400"}`}>
+            <div className="rounded-none border border-stone-400 bg-stone-100 p-2">
+              <div className="uppercase text-stone-500">To 85% floor</div>
+              <div className={`font-black ${m.atRatio >= AT_FLOOR ? "text-emerald-800" : "text-red-800"}`}>
                 {m.atRatio >= AT_FLOOR ? `+${(m.atRatio - AT_FLOOR).toFixed(1)} pts clear` : `${(AT_FLOOR - m.atRatio).toFixed(1)} pts below`}
               </div>
             </div>
-            <div className="rounded border border-slate-700 bg-slate-950 p-2">
-              <div className="uppercase text-slate-500">To 120% ceiling</div>
-              <div className="font-black text-slate-200">
+            <div className="rounded-none border border-stone-400 bg-stone-100 p-2">
+              <div className="uppercase text-stone-500">To 120% ceiling</div>
+              <div className="font-black text-stone-800">
                 {m.atRatio >= AT_CEILING ? "Maxed" : `${(AT_CEILING - m.atRatio).toFixed(1)} pts`}
               </div>
             </div>
           </div>
           {m.protectedNow ? (
-            <div className="mt-2 text-xs text-amber-400">
+            <div className="mt-2 text-xs text-yellow-800">
               New-agent 100% protection expires in <span className="font-black">{m.protectionDays}d</span> ({fmtLong(m.protectionEnd)})
             </div>
           ) : null}
@@ -1404,7 +1485,7 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
         <Card title="Annual NAP" icon={TrendingUp} tone="amber" onClick={() => go("annual")}>
           <Stat label="Year to date" value={money(m.ytdNap)} tone="amber" sub={`${m.ytdApps} net apps · rank #${profile.rank}`} size="text-3xl" />
           <div className="mt-3"><ProgressBar current={m.ytdNap} target={170000} label="Pace vs. #60 estimate ($170k)" /></div>
-          <div className="mt-1 text-xs text-slate-500">Top 150 is competitive, not a fixed threshold. Pace figures are estimates.</div>
+          <div className="mt-1 text-xs text-stone-500">Top 150 is competitive, not a fixed threshold. Pace figures are estimates.</div>
         </Card>
 
         {/* STREAK */}
@@ -1412,7 +1493,7 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
           {m.zeroStreak > 0 ? (
             <>
               <Stat label="Consecutive zero weeks" value={`${m.zeroStreak}${m.unconfirmedZeroAhead ? " (likely " + (m.zeroStreak + 1) + ")" : ""}`} tone="red" size="text-5xl" />
-              <div className="mt-2 text-xs font-bold text-red-400">
+              <div className="mt-2 text-xs font-bold text-red-800">
                 Last production week: {m.completed.find((w) => Number(w.nap) > 0)?.week ?? "—"}. Break it this week.
               </div>
             </>
@@ -1423,24 +1504,27 @@ function DashboardTab({ model: m, nextTarget, go, profile }) {
       </div>
 
       {/* NEXT TARGET hero */}
-      <div className="rounded-xl border-2 border-amber-500 bg-slate-900 p-5">
-        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-amber-400">
-          <Target size={16} /> Next target
+      <div className="fhd-panel border-2 border-stone-900 bg-stone-50 p-5">
+        <div className="flex items-center justify-between gap-2 border-b-2 border-stone-900 pb-1">
+          <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-900">
+            <Target size={14} /> Next target
+          </span>
+          <span className="fhd-data text-xs text-stone-500">Objective — current sales week</span>
         </div>
         {nextTarget ? (
           <>
-            <div className="mt-1 text-5xl font-black leading-none text-amber-400 sm:text-6xl">{money(nextTarget.amount)}</div>
-            <div className="mt-2 text-lg font-bold text-slate-100">
+            <div className="fhd-figure mt-3 text-5xl font-bold leading-none text-yellow-800 sm:text-6xl">{money(nextTarget.amount)}</div>
+            <div className="fhd-display mt-2 text-xl font-bold text-stone-900">
               {money(nextTarget.amount)} {nextTarget.scope === "week" ? "this week" : nextTarget.scope === "month" ? "this month" : "in the window"} ={" "}
               {nextTarget.unlocks.join(" + ")}.
             </div>
-            <div className="mt-1 text-sm font-semibold text-slate-400">
+            <div className="mt-1 text-sm font-semibold text-stone-600">
               ≈ {nextTarget.apps} apps at {money(NAP_PER_APP)}/app · {nextTarget.daysLeft} day{nextTarget.daysLeft === 1 ? "" : "s"} left
               {nextTarget.daysLeft > 0 ? ` · ${appsFor(nextTarget.amount / nextTarget.daysLeft)} apps/day` : ""}
             </div>
           </>
         ) : (
-          <div className="mt-2 text-lg font-bold text-slate-300">Every tracked milestone in range is cleared.</div>
+          <div className="mt-2 text-lg font-bold text-stone-700">Every tracked milestone in range is cleared.</div>
         )}
       </div>
     </div>
@@ -1493,11 +1577,11 @@ function WeeklyTab({ model: m, weeks, saveWeek, deleteWeek, setAtRatio, quickAdd
 
       <RuleBox title="Rule — the sales week">
         <p>A sales week runs Monday through Sunday and is labeled by the Monday it begins. FHD pays on sales months made of whole sales weeks, not calendar months.</p>
-        <p className="text-slate-400">Current: week {m.currentWeek} ({weekRange(m.currentWeek)}) · {m.daysLeftInWeek} days remaining · sales month {m.currentMonth.label}.</p>
+        <p className="text-stone-600">Current: week {m.currentWeek} ({weekRange(m.currentWeek)}) · {m.daysLeftInWeek} days remaining · sales month {m.currentMonth.label}.</p>
       </RuleBox>
 
       {m.zeroStreak > 0 ? (
-        <div className="rounded-xl border border-red-500 bg-red-950 p-3 text-sm font-bold text-red-300">
+        <div className="rounded-none border border-red-800 bg-red-50 p-3 text-sm font-bold text-red-900">
           <AlertTriangle className="mr-2 inline" size={16} />
           {m.zeroStreak} consecutive completed zero weeks{m.unconfirmedZeroAhead ? " (likely 7 — week 31 unconfirmed)" : ""}. Any new zero week extends the streak.
         </div>
@@ -1522,15 +1606,15 @@ function WeeklyTab({ model: m, weeks, saveWeek, deleteWeek, setAtRatio, quickAdd
           <div className="sm:col-span-2 lg:col-span-3">
             <Field label="Notes"><input className={inputCls} value={form.notes} onChange={set("notes")} placeholder="What moved, what stalled" /></Field>
           </div>
-          <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-stone-600">
             <input type="checkbox" checked={form.unconfirmed} onChange={(e) => setForm({ ...form, unconfirmed: e.target.checked })} />
             Unconfirmed (awaiting Agent Register)
           </label>
           <div className="flex items-end gap-2 sm:col-span-2">
-            <button type="submit" className={`${btnCls} bg-sky-600 text-white`}><Save size={14} /> {existing ? "Overwrite week" : "Log week"}</button>
+            <button type="submit" className={`${btnCls} border-blue-900 bg-blue-900 text-white`}><Save size={14} /> {existing ? "Overwrite week" : "Log week"}</button>
             {napNum !== 0 ? (
-              <span className="text-xs text-slate-400">
-                {money(napNum)} → {previewLevel ? <span className="font-bold text-sky-400">{previewLevel.name}</span> : <span className="text-slate-500">below Green Out</span>}
+              <span className="text-xs text-stone-600">
+                {money(napNum)} → {previewLevel ? <span className="font-bold text-blue-900">{previewLevel.name}</span> : <span className="text-stone-500">below Green Out</span>}
                 {" · "}{Math.round(napNum / NAP_PER_APP)} apps equivalent
               </span>
             ) : null}
@@ -1540,21 +1624,21 @@ function WeeklyTab({ model: m, weeks, saveWeek, deleteWeek, setAtRatio, quickAdd
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Panel>
-          <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Quick-add today's activity</div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Quick-add today's activity</div>
           <div className="flex flex-wrap gap-2">
             {[["doors", "Door / call", 10], ["doors", "Door / call", 1], ["presentations", "Presentation", 1], ["apps", "App written", 1], ["referrals", "Referral", 1]].map(([f, label, n], i) => (
-              <button key={i} onClick={() => quickAdd(f, n)} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>
+              <button key={i} onClick={() => quickAdd(f, n)} className={`${btnCls} border-stone-900 bg-stone-200 text-stone-900`}>
                 <Plus size={14} /> {n > 1 ? `${n} ` : ""}{label}
               </button>
             ))}
           </div>
-          <div className="mt-2 text-xs text-slate-400">
+          <div className="mt-2 text-xs text-stone-600">
             This week: {m.actTotals.doors} doors/calls · {m.actTotals.presentations} presentations · {m.actTotals.apps} apps · {m.actTotals.referrals} referrals
           </div>
         </Panel>
 
         <Panel>
-          <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Log an Eagle write-up</div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Log an Eagle write-up</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input className={inputCls} placeholder="Client / policy" value={eagle.client} onChange={(e) => setEagle({ ...eagle, client: e.target.value })} />
             <input type="date" className={inputCls} value={eagle.writeUpDate} onChange={(e) => setEagle({ ...eagle, writeUpDate: e.target.value })} />
@@ -1562,33 +1646,33 @@ function WeeklyTab({ model: m, weeks, saveWeek, deleteWeek, setAtRatio, quickAdd
           </div>
           <button
             onClick={() => { if (!eagle.writeUpDate) return; addEagle({ ...eagle, id: "eagle-" + Date.now() }); setEagle({ client: "", writeUpDate: isoDate(m.today), submittedDate: "" }); }}
-            className={`${btnCls} mt-2 bg-emerald-600 text-white`}>
+            className={`${btnCls} mt-2 border-emerald-800 bg-emerald-800 text-white`}>
             <Plus size={14} /> Start 14-day clock
           </button>
-          <div className="mt-1 text-xs text-slate-500">Write-up date · submission date (leave blank until submitted).</div>
+          <div className="mt-1 text-xs text-stone-500">Write-up date · submission date (leave blank until submitted).</div>
         </Panel>
       </div>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Weekly NAP — full history</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Weekly NAP — full history</div>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="name" stroke="#64748b" fontSize={10} interval={0} angle={-45} textAnchor="end" height={40} />
-              <YAxis stroke="#64748b" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", color: "#e2e8f0" }} formatter={(v) => money(v)} />
-              <ReferenceLine y={GREEN_OUT} stroke="#22c55e" strokeDasharray="4 4" />
-              <ReferenceLine y={0} stroke="#475569" />
+              <CartesianGrid stroke={INK.rule} vertical={false} />
+              <XAxis dataKey="name" stroke="#57534e" fontSize={10} interval={0} angle={-45} textAnchor="end" height={40} />
+              <YAxis stroke="#57534e" fontSize={10} />
+              <Tooltip contentStyle={{ background: "#faf9f6", border: "1px solid #1c1917", color: "#1c1917" }} formatter={(v) => money(v)} />
+              <ReferenceLine y={GREEN_OUT} stroke={INK.ledger} strokeDasharray="4 4" />
+              <ReferenceLine y={0} stroke="#57534e" />
               <Bar dataKey="nap">
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.nap < 0 ? "#ef4444" : d.nap >= GREEN_OUT ? "#0ea5e9" : d.nap > 0 ? "#f59e0b" : "#334155"} />
+                  <Cell key={i} fill={d.nap < 0 ? INK.oxblood : d.nap >= GREEN_OUT ? INK.navy : d.nap > 0 ? INK.ochre : INK.pencil} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-1 text-xs text-slate-500">Dashed green line = $5,000 Green Out.</div>
+        <div className="mt-1 text-xs text-stone-500">Dashed green line = $5,000 Green Out.</div>
       </Panel>
 
       <Table
@@ -1596,18 +1680,18 @@ function WeeklyTab({ model: m, weeks, saveWeek, deleteWeek, setAtRatio, quickAdd
         rows={[...weeks].sort((a, b) => b.week - a.week).map((w) => {
           const lvl = stringLevelFor(Number(w.nap) || 0);
           return [
-            <span className="font-bold text-slate-100">{w.week}{w.unconfirmed ? "*" : ""}</span>,
+            <span className="font-bold text-stone-900">{w.week}{w.unconfirmed ? "*" : ""}</span>,
             weekRange(w.week),
-            <span className={Number(w.nap) < 0 ? "font-bold text-red-400" : Number(w.nap) >= GREEN_OUT ? "font-bold text-sky-400" : Number(w.nap) > 0 ? "font-bold text-amber-400" : "text-slate-500"}>{money(w.nap)}</span>,
+            <span className={Number(w.nap) < 0 ? "font-bold text-red-800" : Number(w.nap) >= GREEN_OUT ? "font-bold text-blue-900" : Number(w.nap) > 0 ? "font-bold text-yellow-800" : "text-stone-500"}>{money(w.nap)}</span>,
             w.netApps,
             w.gross === null || w.gross === undefined ? "—" : money(w.gross),
             lvl ? <Chip tone="blue">{lvl.name}</Chip> : "—",
-            <span className="text-xs text-slate-500">{w.notes}</span>,
-            <button onClick={() => deleteWeek(w.week)} className="text-slate-600"><Trash2 size={14} /></button>,
+            <span className="text-xs text-stone-500">{w.notes}</span>,
+            <button onClick={() => deleteWeek(w.week)} className="text-stone-400"><Trash2 size={14} /></button>,
           ];
         })}
       />
-      <p className="text-xs text-slate-500">* unconfirmed — awaiting Agent Register. Historical gross premium was not itemized by week; 12-month gross/CAI lives on the Quality tab.</p>
+      <p className="text-xs text-stone-500">* unconfirmed — awaiting Agent Register. Historical gross premium was not itemized by week; 12-month gross/CAI lives on the Quality tab.</p>
     </div>
   );
 }
@@ -1652,17 +1736,17 @@ function MonthlyTab({ model: m }) {
       </div>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Week-by-week — {a.month.label}</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Week-by-week — {a.month.label}</div>
         <div className="h-48 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekBars}>
-              <CartesianGrid stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-              <YAxis stroke="#64748b" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} formatter={(v) => money(v)} />
-              <ReferenceLine y={GREEN_OUT} stroke="#22c55e" strokeDasharray="4 4" />
+              <CartesianGrid stroke={INK.rule} vertical={false} />
+              <XAxis dataKey="name" stroke="#57534e" fontSize={11} />
+              <YAxis stroke="#57534e" fontSize={10} />
+              <Tooltip contentStyle={{ background: "#faf9f6", border: "1px solid #1c1917" }} formatter={(v) => money(v)} />
+              <ReferenceLine y={GREEN_OUT} stroke={INK.ledger} strokeDasharray="4 4" />
               <Bar dataKey="nap">
-                {weekBars.map((d, i) => <Cell key={i} fill={d.nap < 0 ? "#ef4444" : d.nap >= GREEN_OUT ? "#0ea5e9" : d.nap > 0 ? "#f59e0b" : d.future ? "#334155" : "#7f1d1d"} />)}
+                {weekBars.map((d, i) => <Cell key={i} fill={d.nap < 0 ? INK.oxblood : d.nap >= GREEN_OUT ? INK.navy : d.nap > 0 ? INK.ochre : d.future ? INK.pencil : "#7f1d1d"} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -1670,23 +1754,23 @@ function MonthlyTab({ model: m }) {
       </Panel>
 
       <Panel>
-        <div className="mb-3 text-xs font-black uppercase tracking-widest text-slate-400">Tier ladder</div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-widest text-stone-900">Tier ladder</div>
         <div className="space-y-2">
           {[...BONUS_TIERS].sort((x, y) => x.nap - y.nap).map((t) => {
             const cleared = a.nap >= t.nap;
             const isNext = a.next && a.next.nap === t.nap;
             const tone = cleared ? "blue" : isNext ? "amber" : "gray";
             return (
-              <div key={t.nap} className={`flex items-center justify-between gap-3 rounded-lg border ${TONE[tone].ring} bg-slate-950 px-3 py-2 ${isNext ? "animate-pulse" : ""}`}>
+              <div key={t.nap} className={`flex items-center justify-between gap-3 rounded-none border ${TONE[tone].ring} bg-stone-100 px-3 py-2 ${isNext ? "fhd-urgent" : ""}`}>
                 <div className="flex items-center gap-2">
-                  {cleared ? <CheckCircle2 size={16} className="text-sky-400" /> : <Lock size={16} className="text-slate-600" />}
+                  {cleared ? <CheckCircle2 size={16} className="text-blue-900" /> : <Lock size={16} className="text-stone-400" />}
                   <span className={`font-bold ${TONE[tone].text}`}>{money(t.nap)}</span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-black text-slate-200">{money(t.bonus)}</div>
-                  <div className="text-xs text-slate-500">after A/T: {money(Math.round(t.bonus * (m.multiplier / 100)))}</div>
+                  <div className="text-sm font-black text-stone-800">{money(t.bonus)}</div>
+                  <div className="text-xs text-stone-500">after A/T: {money(Math.round(t.bonus * (m.multiplier / 100)))}</div>
                 </div>
-                <div className="w-24 text-right text-xs text-slate-400">{cleared ? "cleared" : `gap ${money(t.nap - a.nap)}`}</div>
+                <div className="w-24 text-right text-xs text-stone-600">{cleared ? "cleared" : `gap ${money(t.nap - a.nap)}`}</div>
               </div>
             );
           })}
@@ -1694,39 +1778,39 @@ function MonthlyTab({ model: m }) {
       </Panel>
 
       <Panel tone="amber">
-        <div className="text-xs font-black uppercase tracking-widest text-slate-400">Required pace to the next tier</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-stone-900">Required pace to the next tier</div>
         {a.next ? (
           <>
-            <div className="mt-1 text-2xl font-black text-amber-400">
+            <div className="mt-1 text-2xl font-black text-yellow-800">
               {money(a.gapToNext)} more → {money(a.next.nap)} tier ({money(a.next.bonus)}, {money(Math.round(a.next.bonus * (m.multiplier / 100)))} after A/T)
             </div>
             <div className="mt-2"><GapTriad dollars={a.gapToNext} dailyNap={m.dailyNap} /></div>
-            <div className="mt-2 text-sm text-slate-300">
+            <div className="mt-2 text-sm text-stone-700">
               {a.weeksRemaining > 0
-                ? <>Required pace: <span className="font-black text-slate-100">{money(Math.ceil(a.paceNeeded))}/week</span> across the {a.weeksRemaining} remaining week{a.weeksRemaining === 1 ? "" : "s"} ({a.remainingWeekNums.join(", ")}) — {appsFor(a.paceNeeded)} apps per week.</>
+                ? <>Required pace: <span className="font-black text-stone-900">{money(Math.ceil(a.paceNeeded))}/week</span> across the {a.weeksRemaining} remaining week{a.weeksRemaining === 1 ? "" : "s"} ({a.remainingWeekNums.join(", ")}) — {appsFor(a.paceNeeded)} apps per week.</>
                 : "No weeks remain in this sales month."}
             </div>
           </>
-        ) : <div className="mt-1 text-2xl font-black text-sky-400">Top tier cleared.</div>}
+        ) : <div className="mt-1 text-2xl font-black text-blue-900">Top tier cleared.</div>}
       </Panel>
 
       <div>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Sales month history</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Sales month history</div>
         <Table
           headers={["Sales month", "Weeks", "Range", "NAP", "Wks produced", "Min", "Tier", "After A/T", "Status"]}
           rows={m.months.map((x) => [
-            <span className="font-bold text-slate-100">{x.month.label}{x.month.derived ? "†" : ""}</span>,
+            <span className="font-bold text-stone-900">{x.month.label}{x.month.derived ? "†" : ""}</span>,
             `${x.month.weeks[0]}–${x.month.weeks[x.month.weeks.length - 1]}`,
             monthRange(x.month),
-            <span className={x.nap > 0 ? "font-bold text-amber-400" : "text-slate-500"}>{money(x.nap)}</span>,
-            <span className={x.met ? "font-bold text-emerald-400" : "font-bold text-red-400"}>{x.weeksProduced}</span>,
+            <span className={x.nap > 0 ? "font-bold text-yellow-800" : "text-stone-500"}>{money(x.nap)}</span>,
+            <span className={x.met ? "font-bold text-emerald-800" : "font-bold text-red-800"}>{x.weeksProduced}</span>,
             x.required,
             x.tier.bonus ? money(x.tier.bonus) : "—",
-            <span className={x.payout > 0 ? "font-bold text-emerald-400" : "text-red-400"}>{money(x.payout)}</span>,
+            <span className={x.payout > 0 ? "font-bold text-emerald-800" : "text-red-800"}>{money(x.payout)}</span>,
             x.failed ? <Chip tone="red">Min failed</Chip> : x.closed ? <Chip tone="gray">Closed</Chip> : x.month.key === m.currentMonth.key ? <Chip tone="amber">In progress</Chip> : <Chip tone="gray">Future</Chip>,
           ])}
         />
-        <p className="mt-1 text-xs text-slate-500">† Apr–Jul sales months are derived from the same Monday-anchored week pattern as the published Aug–Dec calendar.</p>
+        <p className="mt-1 text-xs text-stone-500">† Apr–Jul sales months are derived from the same Monday-anchored week pattern as the published Aug–Dec calendar.</p>
       </div>
     </div>
   );
@@ -1752,7 +1836,7 @@ function StringTab({ model: m }) {
       </div>
 
       <Panel>
-        <div className="mb-3 text-xs font-black uppercase tracking-widest text-slate-400">The ladder</div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-widest text-stone-900">The ladder</div>
         <div className="space-y-2">
           {STRING_CLUB.map((l) => {
             const achieved = m.bestWeek.nap >= l.nap;
@@ -1760,16 +1844,16 @@ function StringTab({ model: m }) {
             const tone = achieved ? "blue" : isNext ? "amber" : "gray";
             const gap = Math.max(0, l.nap - m.curWeekNap);
             return (
-              <div key={l.name} className={`rounded-lg border ${TONE[tone].ring} bg-slate-950 p-3 ${isNext ? "animate-pulse" : ""}`}>
+              <div key={l.name} className={`rounded-none border ${TONE[tone].ring} bg-stone-100 p-3 ${isNext ? "fhd-urgent" : ""}`}>
                 <div className="flex items-center justify-between">
                   <span className={`text-lg font-black uppercase tracking-wide ${TONE[tone].text}`}>
                     {achieved ? <CheckCircle2 className="mr-2 inline" size={16} /> : null}{l.name}
                   </span>
-                  <span className="font-bold text-slate-200">{money(l.nap)}</span>
+                  <span className="font-bold text-stone-800">{money(l.nap)}</span>
                 </div>
                 <div className="mt-2"><ProgressBar current={m.curWeekNap} target={l.nap} tone={tone} /></div>
                 {!achieved ? <div className="mt-2"><GapTriad dollars={gap} dailyNap={m.dailyNap} /></div> : (
-                  <div className="mt-1 text-xs font-bold text-sky-400">Achieved — week {m.bestWeek.week}, {money(m.bestWeek.nap)}</div>
+                  <div className="mt-1 text-xs font-bold text-blue-900">Achieved — week {m.bestWeek.week}, {money(m.bestWeek.nap)}</div>
                 )}
               </div>
             );
@@ -1778,7 +1862,7 @@ function StringTab({ model: m }) {
       </Panel>
 
       <div>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Every week vs. the ladder</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Every week vs. the ladder</div>
         <Table
           headers={["Wk", "Week of", "NAP", "Level earned", "Gap to next rung"]}
           rows={[...m.completed, ...(m.curWeekEntry ? [m.curWeekEntry] : [])]
@@ -1789,7 +1873,7 @@ function StringTab({ model: m }) {
               const lvl = stringLevelFor(nap);
               const nxt = nextStringLevel(nap);
               return [w.week, weekRange(w.week), money(nap),
-                lvl ? <Chip tone="blue">{lvl.name}</Chip> : <span className="text-slate-600">—</span>,
+                lvl ? <Chip tone="blue">{lvl.name}</Chip> : <span className="text-stone-400">—</span>,
                 nxt ? `${money(nxt.nap - nap)} → ${nxt.name}` : "maxed"];
             })}
         />
@@ -1819,26 +1903,26 @@ function GluTab({ model: m }) {
         return (
           <Panel key={s.id} tone={s.qualified ? "blue" : dead ? "gray" : urgencyTone(s.qualDaysLeft)} pulse={!dead && !s.qualified && urgencyPulse(s.qualDaysLeft)}>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-lg font-black uppercase tracking-wide text-slate-100">{s.label}</span>
+              <span className="text-lg font-black uppercase tracking-wide text-stone-900">{s.label}</span>
               {s.qualified ? <Chip tone="blue">Qualified</Chip> : dead ? <Chip tone="gray">Window closed</Chip> : <Chip tone="amber">Open</Chip>}
             </div>
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-stone-600">
               Qualification window {fmtLong(s.qual[0])} – {fmtLong(s.qual[1])}
               {s.reg ? ` · Registration ${fmtLong(s.reg[0])} – ${fmtLong(s.reg[1])}` : " · Registration closed"}
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className={`rounded-lg border p-3 ${live && !dead ? "border-amber-500 bg-amber-950" : "border-slate-700 bg-slate-950"}`}>
-                <div className="mb-1 flex items-center justify-between text-xs font-black uppercase tracking-wide text-slate-300">
+              <div className={`rounded-none border p-3 ${live && !dead ? "border-yellow-700 bg-yellow-50" : "border-stone-400 bg-stone-100"}`}>
+                <div className="mb-1 flex items-center justify-between text-xs font-black uppercase tracking-wide text-stone-700">
                   Path A — three Green-Outs {live && !dead ? <Chip tone="amber">Live path</Chip> : null}
                 </div>
                 <ProgressBar current={s.greenOuts} target={GLU_GREENOUT_TARGET} unit="" />
-                <div className="mt-2 text-xs text-slate-400">
+                <div className="mt-2 text-xs text-stone-600">
                   {s.goGap > 0 ? <>{s.goGap} more Green-Out{s.goGap === 1 ? "" : "s"} — each needs {money(GREEN_OUT)} in a single week.</> : "Path complete."}
                 </div>
               </div>
-              <div className={`rounded-lg border p-3 ${!live && !dead ? "border-amber-500 bg-amber-950" : "border-slate-700 bg-slate-950"}`}>
-                <div className="mb-1 flex items-center justify-between text-xs font-black uppercase tracking-wide text-slate-300">
+              <div className={`rounded-none border p-3 ${!live && !dead ? "border-yellow-700 bg-yellow-50" : "border-stone-400 bg-stone-100"}`}>
+                <div className="mb-1 flex items-center justify-between text-xs font-black uppercase tracking-wide text-stone-700">
                   Path B — $30,000 NAP {!live && !dead ? <Chip tone="amber">Live path</Chip> : null}
                 </div>
                 <ProgressBar current={s.napInWindow} target={GLU_NAP_TARGET} />
@@ -1853,16 +1937,16 @@ function GluTab({ model: m }) {
                   ? <Countdown date={s.reg[0]} label="Registration opens" />
                   : <Countdown date={s.reg[1]} label="Registration closes" />
               ) : (
-                <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Registration</div>
-                  <div className="text-2xl font-black text-slate-500">CLOSED</div>
+                <div className="rounded-none border border-stone-400 bg-stone-50 px-3 py-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-stone-600">Registration</div>
+                  <div className="text-2xl font-black text-stone-500">CLOSED</div>
                 </div>
               )}
             </div>
 
             {!dead && s.qualDaysLeft > 0 ? (
-              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
-                Required pace on Path B: <span className="font-black text-amber-400">{money(Math.ceil(s.napGap / Math.max(1, Math.ceil(s.qualDaysLeft / 7))))}/week</span>{" "}
+              <div className="mt-3 rounded-none border border-stone-400 bg-stone-100 p-3 text-sm text-stone-700">
+                Required pace on Path B: <span className="font-black text-yellow-800">{money(Math.ceil(s.napGap / Math.max(1, Math.ceil(s.qualDaysLeft / 7))))}/week</span>{" "}
                 across the ~{Math.ceil(s.qualDaysLeft / 7)} weeks left ({appsFor(s.napGap / Math.max(1, Math.ceil(s.qualDaysLeft / 7)))} apps/week).
                 Path A needs {s.goGap} of those weeks to land at {money(GREEN_OUT)}+.
               </div>
@@ -1877,7 +1961,7 @@ function GluTab({ model: m }) {
                   .filter((w) => { const ws = weekStart(w.week); return ws >= startOfDay(s.qual[0]) && ws <= startOfDay(s.qual[1]); })
                   .sort((a, b) => b.week - a.week)
                   .map((w) => [w.week, weekRange(w.week), money(w.nap),
-                    Number(w.nap) >= GREEN_OUT ? <Chip tone="blue">Yes</Chip> : <span className="text-slate-600">no</span>])}
+                    Number(w.nap) >= GREEN_OUT ? <Chip tone="blue">Yes</Chip> : <span className="text-stone-400">no</span>])}
               />
             </div>
           </Panel>
@@ -1922,40 +2006,40 @@ function QualityTab({ model: m, profile, setAtRatio, conservation, setConsStatus
         <Panel tone={urgencyTone(m.protectionDays)} pulse={urgencyPulse(m.protectionDays)}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-black uppercase tracking-widest text-slate-400">New-agent 100% A/T protection expires</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-stone-900">New-agent 100% A/T protection expires</div>
               <div className={`text-4xl font-black ${TONE[urgencyTone(m.protectionDays)].text}`}>{m.protectionDays} days</div>
-              <div className="text-xs text-slate-400">{fmtLong(m.protectionEnd)} — 6 months from first new business {fmtLong(parseISO(profile.firstBusinessDate))}</div>
+              <div className="text-xs text-stone-600">{fmtLong(m.protectionEnd)} — 6 months from first new business {fmtLong(parseISO(profile.firstBusinessDate))}</div>
             </div>
-            <div className="text-sm text-slate-300">
-              After that date the multiplier drops to the real ratio: <span className="font-black text-amber-400">{pct(rawMultiplier(m.atRatio), 1)}</span> at today's {pct(m.atRatio, 1)}.
+            <div className="text-sm text-stone-700">
+              After that date the multiplier drops to the real ratio: <span className="font-black text-yellow-800">{pct(rawMultiplier(m.atRatio), 1)}</span> at today's {pct(m.atRatio, 1)}.
             </div>
           </div>
         </Panel>
       ) : null}
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">A/T trend — 85% floor / 120% ceiling</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">A/T trend — 85% floor / 120% ceiling</div>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={atData}>
-              <CartesianGrid stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-              <YAxis domain={[70, 130]} stroke="#64748b" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} formatter={(v) => pct(v, 1)} />
-              <ReferenceLine y={AT_FLOOR} stroke="#ef4444" strokeWidth={2} />
-              <ReferenceLine y={AT_CEILING} stroke="#22c55e" strokeWidth={2} />
-              <Line type="monotone" dataKey="ratio" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4 }} />
+              <CartesianGrid stroke={INK.rule} vertical={false} />
+              <XAxis dataKey="name" stroke="#57534e" fontSize={11} />
+              <YAxis domain={[70, 130]} stroke="#57534e" fontSize={10} />
+              <Tooltip contentStyle={{ background: "#faf9f6", border: "1px solid #1c1917" }} formatter={(v) => pct(v, 1)} />
+              <ReferenceLine y={AT_FLOOR} stroke={INK.oxblood} strokeWidth={2} />
+              <ReferenceLine y={AT_CEILING} stroke={INK.ledger} strokeWidth={2} />
+              <Line type="monotone" dataKey="ratio" stroke={INK.navy} strokeWidth={3} dot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <Field label="Update 12-month A/T (%)"><input className={inputCls} type="number" step="0.1" value={ratio} onChange={(e) => setRatio(e.target.value)} /></Field>
-          <button onClick={() => setAtRatio(ratio)} className={`${btnCls} bg-sky-600 text-white`}><Save size={14} /> Save ratio</button>
+          <button onClick={() => setAtRatio(ratio)} className={`${btnCls} border-blue-900 bg-blue-900 text-white`}><Save size={14} /> Save ratio</button>
         </div>
       </Panel>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">CAI % — where NAP leaks</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">CAI % — where NAP leaks</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Stat label="12-month CAI" value={pct(profile.cai12mo, 1)} tone="red" size="text-4xl" sub={`${money(profile.cai12moGross)} gross → ${money(profile.cai12moNet)} net`} />
           <Stat label="YTD gross premium" value={money(profile.ytdGross)} tone="gray" size="text-3xl" sub={`vs. ${money(m.ytdNap)} net`} />
@@ -1965,17 +2049,17 @@ function QualityTab({ model: m, profile, setAtRatio, conservation, setConsStatus
           <div className="mt-3 h-40 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={caiData}>
-                <CartesianGrid stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={10} />
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} formatter={(v) => pct(v, 1)} />
-                <ReferenceLine y={profile.cai12mo} stroke="#f59e0b" strokeDasharray="4 4" />
-                <Line type="monotone" dataKey="cai" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                <CartesianGrid stroke={INK.rule} vertical={false} />
+                <XAxis dataKey="name" stroke="#57534e" fontSize={11} />
+                <YAxis stroke="#57534e" fontSize={10} />
+                <Tooltip contentStyle={{ background: "#faf9f6", border: "1px solid #1c1917" }} formatter={(v) => pct(v, 1)} />
+                <ReferenceLine y={profile.cai12mo} stroke={INK.ochre} strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="cai" stroke={INK.oxblood} strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500">
+          <div className="mt-3 rounded-none border border-stone-300 bg-stone-100 p-3 text-sm text-stone-500">
             Per-week CAI needs gross premium logged alongside net. Log gross on the Weekly Log tab and this trend fills in.
           </div>
         )}
@@ -1983,25 +2067,25 @@ function QualityTab({ model: m, profile, setAtRatio, conservation, setConsStatus
 
       <Panel>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-black uppercase tracking-widest text-slate-400">Conservation tracker</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-stone-900">Conservation tracker</span>
           <div className="flex flex-wrap gap-3 text-xs">
-            <span className="text-sky-400">NAP saved <span className="font-black">{money(m.napSaved)}</span></span>
-            <span className="text-amber-400">At risk <span className="font-black">{money(m.napAtRisk)}</span></span>
-            <span className="text-red-400">Lost <span className="font-black">{money(m.napLost)}</span></span>
+            <span className="text-blue-900">NAP saved <span className="font-black">{money(m.napSaved)}</span></span>
+            <span className="text-yellow-800">At risk <span className="font-black">{money(m.napAtRisk)}</span></span>
+            <span className="text-red-800">Lost <span className="font-black">{money(m.napLost)}</span></span>
           </div>
         </div>
         <div className="space-y-2">
           {m.consRows.map((c) => (
-            <div key={c.id} className={`rounded-lg border ${TONE[consTone(c.status)].ring} bg-slate-950 p-3`}>
+            <div key={c.id} className={`rounded-none border ${TONE[consTone(c.status)].ring} bg-stone-100 p-3`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="font-bold text-slate-100">{c.name}</div>
-                  <div className="text-xs text-slate-400">Policy {c.policy} · {c.reason} · {money(c.monthly, 2)}/mo · {money(c.annual, 2)} annualized</div>
+                  <div className="font-bold text-stone-900">{c.name}</div>
+                  <div className="text-xs text-stone-600">Policy {c.policy} · {c.reason} · {money(c.monthly, 2)}/mo · {money(c.annual, 2)} annualized</div>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {CONS_STATUSES.map((s) => (
                     <button key={s} onClick={() => setConsStatus(c.id, s)}
-                      className={`rounded border px-2 py-1 text-xs font-bold uppercase ${c.status === s ? TONE[consTone(s)].chip : "border-slate-700 bg-slate-900 text-slate-500"}`}>
+                      className={`rounded-none border px-2 py-1 text-xs font-bold uppercase ${c.status === s ? TONE[consTone(s)].chip : "border-stone-400 bg-stone-50 text-stone-500"}`}>
                       {s}
                     </button>
                   ))}
@@ -2009,14 +2093,14 @@ function QualityTab({ model: m, profile, setAtRatio, conservation, setConsStatus
               </div>
             </div>
           ))}
-          {m.consRows.length === 0 ? <div className="text-sm text-slate-500">No open conservation items.</div> : null}
+          {m.consRows.length === 0 ? <div className="text-sm text-stone-500">No open conservation items.</div> : null}
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-5">
           <input className={inputCls} placeholder="Policy #" value={row.policy} onChange={(e) => setRow({ ...row, policy: e.target.value })} />
           <input className={inputCls} placeholder="Client name" value={row.name} onChange={(e) => setRow({ ...row, name: e.target.value })} />
           <input className={inputCls} placeholder="Reason (NSF, terminated…)" value={row.reason} onChange={(e) => setRow({ ...row, reason: e.target.value })} />
           <input className={inputCls} type="number" step="0.01" placeholder="$/mo" value={row.monthly} onChange={(e) => setRow({ ...row, monthly: e.target.value })} />
-          <button className={`${btnCls} bg-slate-700 text-slate-100`}
+          <button className={`${btnCls} border-stone-900 bg-stone-200 text-stone-900`}
             onClick={() => { if (!row.policy && !row.name) return; addConservation({ ...row, monthly: Number(row.monthly) || 0, id: "cons-" + Date.now(), status: "Open", logged: isoDate(m.today) }); setRow({ policy: "", name: "", reason: "", monthly: "" }); }}>
             <Plus size={14} /> Add item
           </button>
@@ -2047,12 +2131,12 @@ function EaglesTab({ model: m, updateEagle, deleteEagle, addEagle }) {
       </div>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Log a write-up</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Log a write-up</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           <input className={inputCls} placeholder="Client / policy" value={e2.client} onChange={(ev) => setE2({ ...e2, client: ev.target.value })} />
           <Field label="Write-up date"><input type="date" className={inputCls} value={e2.writeUpDate} onChange={(ev) => setE2({ ...e2, writeUpDate: ev.target.value })} /></Field>
           <Field label="Submitted date"><input type="date" className={inputCls} value={e2.submittedDate} onChange={(ev) => setE2({ ...e2, submittedDate: ev.target.value })} /></Field>
-          <button className={`${btnCls} self-end bg-emerald-600 text-white`}
+          <button className={`${btnCls} self-end border-emerald-800 bg-emerald-800 text-white`}
             onClick={() => { if (!e2.writeUpDate) return; addEagle({ ...e2, id: "eagle-" + Date.now() }); setE2({ client: "", writeUpDate: isoDate(m.today), submittedDate: "" }); }}>
             <Plus size={14} /> Add
           </button>
@@ -2061,7 +2145,7 @@ function EaglesTab({ model: m, updateEagle, deleteEagle, addEagle }) {
 
       <div className="space-y-2">
         {m.eagleRows.length === 0 ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">No Eagle write-ups logged yet. Each one is $100 if it lands inside 14 days.</div>
+          <div className="rounded-none border border-stone-300 bg-stone-100 p-4 text-sm text-stone-500">No Eagle write-ups logged yet. Each one is $100 if it lands inside 14 days.</div>
         ) : null}
         {m.eagleRows.map((e) => {
           const tone = e.submitted ? (e.onTime ? "blue" : "red") : e.expired ? "red" : e.daysLeft <= 4 ? "red" : e.daysLeft <= 7 ? "amber" : "green";
@@ -2069,30 +2153,30 @@ function EaglesTab({ model: m, updateEagle, deleteEagle, addEagle }) {
             <Panel key={e.id} tone={tone} pulse={!e.submitted && !e.expired && e.daysLeft <= 4}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-black text-slate-100">{e.client || "Unnamed write-up"}</div>
-                  <div className="text-xs text-slate-400">
+                  <div className="font-black text-stone-900">{e.client || "Unnamed write-up"}</div>
+                  <div className="text-xs text-stone-600">
                     Written {fmtLong(parseISO(e.writeUpDate))} · due {e.due ? fmtLong(e.due) : "—"}
                     {e.submitted ? ` · submitted ${fmtLong(parseISO(e.submittedDate))}` : ""}
                   </div>
                 </div>
                 <div className="text-right">
                   {e.submitted ? (
-                    <div className={`text-2xl font-black ${e.onTime ? "text-sky-400" : "text-red-400"}`}>
+                    <div className={`text-2xl font-black ${e.onTime ? "text-blue-900" : "text-red-800"}`}>
                       {e.onTime ? "+$100 EARNED" : "LATE — $100 forfeited"}
                     </div>
                   ) : e.expired ? (
-                    <div className="text-2xl font-black text-red-400">EXPIRED — $100 forfeited</div>
+                    <div className="text-2xl font-black text-red-800">EXPIRED — $100 forfeited</div>
                   ) : (
                     <div className={`text-3xl font-black ${TONE[tone].text}`}>{e.daysLeft}d left</div>
                   )}
                 </div>
                 <div className="flex gap-2">
                   {!e.submitted ? (
-                    <button onClick={() => updateEagle(e.id, { submittedDate: isoDate(m.today) })} className={`${btnCls} bg-emerald-600 text-white`}>
+                    <button onClick={() => updateEagle(e.id, { submittedDate: isoDate(m.today) })} className={`${btnCls} border-emerald-800 bg-emerald-800 text-white`}>
                       <CheckCircle2 size={14} /> Mark submitted today
                     </button>
                   ) : null}
-                  <button onClick={() => deleteEagle(e.id)} className={`${btnCls} border border-slate-700 bg-slate-900 text-slate-400`}><Trash2 size={14} /></button>
+                  <button onClick={() => deleteEagle(e.id)} className={`${btnCls} border-stone-400 bg-stone-50 text-stone-600`}><Trash2 size={14} /></button>
                 </div>
               </div>
             </Panel>
@@ -2101,7 +2185,7 @@ function EaglesTab({ model: m, updateEagle, deleteEagle, addEagle }) {
       </div>
 
       <Panel tone={m.ytdNap >= LICENSE_REIMB_NAP ? "blue" : "amber"}>
-        <div className="text-xs font-black uppercase tracking-widest text-slate-400">License reimbursement</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-stone-900">License reimbursement</div>
         <RuleBox title="Official rule"><p>$50,000 cumulative NAP earns reimbursement of licensing expenses.</p></RuleBox>
         <div className="mt-3"><ProgressBar current={m.ytdNap} target={LICENSE_REIMB_NAP} label="Cumulative NAP" /></div>
         <div className="mt-2"><GapTriad dollars={m.licenseGap} dailyNap={m.dailyNap} /></div>
@@ -2109,14 +2193,14 @@ function EaglesTab({ model: m, updateEagle, deleteEagle, addEagle }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Panel tone="gray">
-          <div className="text-xs font-black uppercase tracking-widest text-slate-400">"I Dare You!" — 13-week contest</div>
-          <div className="mt-2 text-2xl font-black text-slate-500">Watch for announcement</div>
-          <p className="mt-1 text-sm text-slate-400">No published thresholds. Nothing is computed against this until the rules drop.</p>
+          <div className="text-xs font-bold uppercase tracking-widest text-stone-900">"I Dare You!" — 13-week contest</div>
+          <div className="mt-2 text-2xl font-black text-stone-500">Watch for announcement</div>
+          <p className="mt-1 text-sm text-stone-600">No published thresholds. Nothing is computed against this until the rules drop.</p>
         </Panel>
         <Panel tone="gray">
-          <div className="text-xs font-black uppercase tracking-widest text-slate-400">Record Breakers</div>
-          <div className="mt-2 text-2xl font-black text-slate-500">Watch for announcement</div>
-          <p className="mt-1 text-sm text-slate-400">No published thresholds. Informational only.</p>
+          <div className="text-xs font-bold uppercase tracking-widest text-stone-900">Record Breakers</div>
+          <div className="mt-2 text-2xl font-black text-stone-500">Watch for announcement</div>
+          <p className="mt-1 text-sm text-stone-600">No published thresholds. Informational only.</p>
         </Panel>
       </div>
     </div>
@@ -2145,26 +2229,26 @@ function AnnualTab({ model: m, profile }) {
       {m.quarters.map((q) => (
         <Panel key={q.key} tone={q.achieved ? "blue" : q.possible ? "amber" : "red"}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-lg font-black uppercase tracking-wide text-slate-100">{q.label}</span>
+            <span className="text-lg font-black uppercase tracking-wide text-stone-900">{q.label}</span>
             {q.achieved ? <Chip tone="blue">Earned</Chip> : q.possible ? <Chip tone="amber">{q.cleared}/3 slots</Chip> : <Chip tone="red">Out of reach</Chip>}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {q.slots.map((s) => {
               const tone = s.cleared ? "green" : s.closed ? "red" : "gray";
               return (
-                <div key={s.key} className={`rounded-lg border ${TONE[tone].ring} ${s.cleared ? "bg-emerald-950" : "bg-slate-950"} p-3`}>
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{s.label}</div>
+                <div key={s.key} className={`rounded-none border ${TONE[tone].ring} ${s.cleared ? "bg-emerald-50" : "bg-stone-100"} p-3`}>
+                  <div className="text-xs font-bold uppercase tracking-wide text-stone-600">{s.label}</div>
                   <div className={`text-2xl font-black ${TONE[tone].text}`}>{money(s.nap)}</div>
                   <ProgressBar current={s.nap} target={QUARTERLY_STOCK_NAP} showGap={false} height="h-2" />
-                  <div className="mt-1 text-xs text-slate-400">
+                  <div className="mt-1 text-xs text-stone-600">
                     {s.cleared ? "Slot cleared" : s.closed ? "Closed short" : `gap ${money(QUARTERLY_STOCK_NAP - s.nap)}`}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 text-xs text-slate-400">
-            Reward: $2,000 Globe Life stock + $105 mobile technology reimbursement. A/T requirement {q.atOk ? <span className="font-bold text-emerald-400">met ({pct(m.multiplier, 1)})</span> : <span className="font-bold text-red-400">NOT met</span>}.
+          <div className="mt-2 text-xs text-stone-600">
+            Reward: $2,000 Globe Life stock + $105 mobile technology reimbursement. A/T requirement {q.atOk ? <span className="font-bold text-emerald-800">met ({pct(m.multiplier, 1)})</span> : <span className="font-bold text-red-800">NOT met</span>}.
           </div>
         </Panel>
       ))}
@@ -2181,49 +2265,49 @@ function AnnualTab({ model: m, profile }) {
       </div>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Club pace context — estimates only</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Club pace context — estimates only</div>
         <div className="space-y-3">
           {AWARD_CLUBS.map((c) => (
             <div key={c.name}>
               <div className="flex items-baseline justify-between text-sm">
-                <span className="font-bold text-slate-200">{c.name} <span className="text-xs text-slate-500">({c.range})</span></span>
-                <span className="text-xs text-slate-500">~{money(c.pace)} pace est.</span>
+                <span className="font-bold text-stone-800">{c.name} <span className="text-xs text-stone-500">({c.range})</span></span>
+                <span className="text-xs text-stone-500">~{money(c.pace)} pace est.</span>
               </div>
               <ProgressBar current={m.ytdNap} target={c.pace} />
               <div className="mt-1"><GapTriad dollars={Math.max(0, c.pace - m.ytdNap)} dailyNap={m.dailyNap} /></div>
             </div>
           ))}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-stone-500">
           Estimates, flagged as such: #60 tracked near $170,000 mid-2026 and the top 10 ran $300,000–$500,000+. Actual cutoffs move with the field.
         </p>
       </Panel>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Year-end projection</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Year-end projection</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-red-800 bg-slate-950 p-3">
-            <div className="text-xs uppercase text-slate-500">At current pace ({money(Math.round(m.weeklyPace))}/wk)</div>
-            <div className="text-3xl font-black text-red-400">{money(Math.round(projCurrent))}</div>
+          <div className="rounded-none border border-red-800 bg-stone-100 p-3">
+            <div className="text-xs uppercase text-stone-500">At current pace ({money(Math.round(m.weeklyPace))}/wk)</div>
+            <div className="text-3xl font-black text-red-800">{money(Math.round(projCurrent))}</div>
           </div>
-          <div className="rounded-lg border border-sky-800 bg-slate-950 p-3">
-            <div className="text-xs uppercase text-slate-500">At Week-18 pace ({money(m.week18Pace)}/wk)</div>
-            <div className="text-3xl font-black text-sky-400">{money(Math.round(proj18))}</div>
+          <div className="rounded-none border border-blue-900 bg-stone-100 p-3">
+            <div className="text-xs uppercase text-stone-500">At Week-18 pace ({money(m.week18Pace)}/wk)</div>
+            <div className="text-3xl font-black text-blue-900">{money(Math.round(proj18))}</div>
           </div>
         </div>
-        <div className="mt-2 text-xs text-slate-400">{weeksLeft} sales weeks left in the year (through {fmtLong(yearEnd)}).</div>
+        <div className="mt-2 text-xs text-stone-600">{weeksLeft} sales weeks left in the year (through {fmtLong(yearEnd)}).</div>
       </Panel>
 
       <Panel tone="gray">
-        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400"><Lock size={14} /> Mid-Year Meeting — 2027 cycle</div>
-        <div className="mt-2 text-2xl font-black text-slate-500">Not yet open</div>
-        <p className="mt-1 text-sm text-slate-400">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-900"><Lock size={14} /> Mid-Year Meeting — 2027 cycle</div>
+        <div className="mt-2 text-2xl font-black text-stone-500">Not yet open</div>
+        <p className="mt-1 text-sm text-stone-600">
           22-week qualification period. Personal NAP levels: L1 $50,000 · L2 $80,000 · L3 $100,000 · L4 $130,000.
           Nothing is computed against this until the 2027 window is announced.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {MIDYEAR_LEVELS.map((l) => (
-            <span key={l.level} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-slate-500">{l.level} · {money(l.nap)}</span>
+            <span key={l.level} className="rounded-none border border-stone-400 bg-stone-50 px-2 py-1 text-xs font-bold text-stone-500">{l.level} · {money(l.nap)}</span>
           ))}
         </div>
       </Panel>
@@ -2268,10 +2352,10 @@ function ActivityTab({ model: m, activity, addActivity, quickAdd }) {
       </div>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Quick add — today</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Quick add — today</div>
         <div className="flex flex-wrap gap-2">
           {[["doors", "+10 doors/calls", 10], ["doors", "+1 door/call", 1], ["presentations", "+1 presentation", 1], ["apps", "+1 app", 1], ["referrals", "+1 referral", 1]].map(([f, label, n], i) => (
-            <button key={i} onClick={() => quickAdd(f, n)} className={`${btnCls} border border-slate-700 bg-slate-800 text-slate-200`}>{label}</button>
+            <button key={i} onClick={() => quickAdd(f, n)} className={`${btnCls} border-stone-900 bg-stone-200 text-stone-900`}>{label}</button>
           ))}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-6">
@@ -2280,7 +2364,7 @@ function ActivityTab({ model: m, activity, addActivity, quickAdd }) {
           <Field label="Presentations"><input type="number" className={inputCls} value={row.presentations} onChange={(e) => setRow({ ...row, presentations: e.target.value })} /></Field>
           <Field label="Apps"><input type="number" className={inputCls} value={row.apps} onChange={(e) => setRow({ ...row, apps: e.target.value })} /></Field>
           <Field label="Referrals"><input type="number" className={inputCls} value={row.referrals} onChange={(e) => setRow({ ...row, referrals: e.target.value })} /></Field>
-          <button className={`${btnCls} self-end bg-sky-600 text-white`}
+          <button className={`${btnCls} self-end border-blue-900 bg-blue-900 text-white`}
             onClick={() => { addActivity({ id: "act-" + Date.now(), date: row.date, doors: Number(row.doors) || 0, presentations: Number(row.presentations) || 0, apps: Number(row.apps) || 0, referrals: Number(row.referrals) || 0 }); setRow({ ...row, doors: "", presentations: "", apps: "", referrals: "" }); }}>
             <Plus size={14} /> Log day
           </button>
@@ -2288,14 +2372,14 @@ function ActivityTab({ model: m, activity, addActivity, quickAdd }) {
       </Panel>
 
       <div>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">This week's daily log</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">This week's daily log</div>
         <Table headers={["Date", "Doors/calls", "Presentations", "Apps", "Referrals", "Implied NAP"]}
           empty="Nothing logged this week. Activity is the only part of this dashboard you control directly."
           rows={weekRows.map((a) => [fmtLong(parseISO(a.date)), a.doors, a.presentations, a.apps, a.referrals, money((Number(a.apps) || 0) * NAP_PER_APP)])} />
       </div>
 
       <div>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Full activity history</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Full activity history</div>
         <Table headers={["Date", "Week", "Doors/calls", "Presentations", "Apps", "Referrals"]}
           empty="No activity logged yet."
           rows={[...activity].sort((a, b) => (a.date < b.date ? 1 : -1)).map((a) => {
@@ -2342,29 +2426,29 @@ function PaceTab({ model: m }) {
 
       <Panel tone="amber">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-lg font-black text-slate-100">
-            If I write <span className="text-amber-400">{appsPerDay}</span> app{appsPerDay === 1 ? "" : "s"} per day for the rest of this{" "}
-            <button onClick={() => setScope(scope === "week" ? "month" : "week")} className="underline decoration-dotted text-sky-400">{scope}</button>…
+          <div className="text-lg font-black text-stone-900">
+            If I write <span className="text-yellow-800">{appsPerDay}</span> app{appsPerDay === 1 ? "" : "s"} per day for the rest of this{" "}
+            <button onClick={() => setScope(scope === "week" ? "month" : "week")} className="underline decoration-dotted text-blue-900">{scope}</button>…
           </div>
-          <div className="text-xs text-slate-400">{daysLeft} days left in the {scope} · tap the word to switch</div>
+          <div className="text-xs text-stone-600">{daysLeft} days left in the {scope} · tap the word to switch</div>
         </div>
         <input type="range" min="0" max="8" step="1" value={appsPerDay} onChange={(e) => setAppsPerDay(Number(e.target.value))} className="mt-3 w-full" />
-        <div className="mt-1 flex justify-between text-xs text-slate-500"><span>0</span><span>4</span><span>8 apps/day</span></div>
+        <div className="mt-1 flex justify-between text-xs text-stone-500"><span>0</span><span>4</span><span>8 apps/day</span></div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-            <div className="text-xs uppercase text-slate-500">NAP added</div>
-            <div className="text-3xl font-black text-amber-400">{money(added)}</div>
-            <div className="text-xs text-slate-500">{appsPerDay * daysLeft} apps × {money(NAP_PER_APP)}</div>
+          <div className="rounded-none border border-stone-400 bg-stone-100 p-3">
+            <div className="text-xs uppercase text-stone-500">NAP added</div>
+            <div className="text-3xl font-black text-yellow-800">{money(added)}</div>
+            <div className="text-xs text-stone-500">{appsPerDay * daysLeft} apps × {money(NAP_PER_APP)}</div>
           </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-            <div className="text-xs uppercase text-slate-500">Week {m.currentWeek} finishes at</div>
-            <div className={`text-3xl font-black ${projWeek >= GREEN_OUT ? "text-sky-400" : "text-amber-400"}`}>{money(projWeek)}</div>
+          <div className="rounded-none border border-stone-400 bg-stone-100 p-3">
+            <div className="text-xs uppercase text-stone-500">Week {m.currentWeek} finishes at</div>
+            <div className={`text-3xl font-black ${projWeek >= GREEN_OUT ? "text-blue-900" : "text-yellow-800"}`}>{money(projWeek)}</div>
           </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-            <div className="text-xs uppercase text-slate-500">{m.currentMonth.label} finishes at</div>
-            <div className="text-3xl font-black text-amber-400">{money(projMonth)}</div>
-            <div className="text-xs text-slate-500">
+          <div className="rounded-none border border-stone-400 bg-stone-100 p-3">
+            <div className="text-xs uppercase text-stone-500">{m.currentMonth.label} finishes at</div>
+            <div className="text-3xl font-black text-yellow-800">{money(projMonth)}</div>
+            <div className="text-xs text-stone-500">
               tier {money(bonusTierFor(projMonth, m.newAgent).bonus)} → {money(Math.round(bonusTierFor(projMonth, m.newAgent).bonus * (m.multiplier / 100)))} after A/T
               {m.thisMonth.failed ? " (activity minimum failed — pays $0)" : ""}
             </div>
@@ -2373,21 +2457,21 @@ function PaceTab({ model: m }) {
       </Panel>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">What that unlocks</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">What that unlocks</div>
         <div className="space-y-2">
           {unlocks.map((u, i) => (
-            <div key={i} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${u.hit ? "border-emerald-600 bg-emerald-950" : "border-slate-700 bg-slate-950"}`}>
-              <span className={`text-sm font-bold ${u.hit ? "text-emerald-300" : "text-slate-400"}`}>
+            <div key={i} className={`flex items-center justify-between rounded-none border px-3 py-2 ${u.hit ? "border-emerald-700 bg-emerald-50" : "border-stone-400 bg-stone-100"}`}>
+              <span className={`text-sm font-bold ${u.hit ? "text-emerald-800" : "text-stone-600"}`}>
                 {u.hit ? <CheckCircle2 className="mr-2 inline" size={14} /> : <Lock className="mr-2 inline" size={14} />}{u.label}
               </span>
-              <span className="text-xs text-slate-500">{u.detail}</span>
+              <span className="text-xs text-stone-500">{u.detail}</span>
             </div>
           ))}
         </div>
       </Panel>
 
       <Panel>
-        <div className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Year-end projection — side by side</div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-900">Year-end projection — side by side</div>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={[
@@ -2395,23 +2479,23 @@ function PaceTab({ model: m }) {
               { name: `Slider (${appsPerDay}/day)`, nap: Math.round(yearAtSlider) },
               { name: "Week-18 pace", nap: Math.round(yearAt18) },
             ]}>
-              <CartesianGrid stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-              <YAxis stroke="#64748b" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} formatter={(v) => money(v)} />
-              <ReferenceLine y={LICENSE_REIMB_NAP} stroke="#22c55e" strokeDasharray="4 4" />
+              <CartesianGrid stroke={INK.rule} vertical={false} />
+              <XAxis dataKey="name" stroke="#57534e" fontSize={11} />
+              <YAxis stroke="#57534e" fontSize={10} />
+              <Tooltip contentStyle={{ background: "#faf9f6", border: "1px solid #1c1917" }} formatter={(v) => money(v)} />
+              <ReferenceLine y={LICENSE_REIMB_NAP} stroke={INK.ledger} strokeDasharray="4 4" />
               <Bar dataKey="nap">
-                <Cell fill="#ef4444" /><Cell fill="#f59e0b" /><Cell fill="#0ea5e9" />
+                <Cell fill={INK.oxblood} /><Cell fill={INK.ochre} /><Cell fill={INK.navy} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
         <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-          <div className="text-red-400">Current pace: <span className="font-black">{money(Math.round(yearAtCurrent))}</span> ({money(Math.round(m.weeklyPace))}/wk)</div>
-          <div className="text-amber-400">At {appsPerDay} apps/day, 5 days/wk: <span className="font-black">{money(Math.round(yearAtSlider))}</span></div>
-          <div className="text-sky-400">Week-18 pace: <span className="font-black">{money(Math.round(yearAt18))}</span> ({money(m.week18Pace)}/wk)</div>
+          <div className="text-red-800">Current pace: <span className="font-black">{money(Math.round(yearAtCurrent))}</span> ({money(Math.round(m.weeklyPace))}/wk)</div>
+          <div className="text-yellow-800">At {appsPerDay} apps/day, 5 days/wk: <span className="font-black">{money(Math.round(yearAtSlider))}</span></div>
+          <div className="text-blue-900">Week-18 pace: <span className="font-black">{money(Math.round(yearAt18))}</span> ({money(m.week18Pace)}/wk)</div>
         </div>
-        <div className="mt-1 text-xs text-slate-500">{weeksLeftInYear} sales weeks remain. Dashed green line = $50,000 license reimbursement.</div>
+        <div className="mt-1 text-xs text-stone-500">{weeksLeftInYear} sales weeks remain. Dashed green line = $50,000 license reimbursement.</div>
       </Panel>
     </div>
   );
@@ -2445,15 +2529,15 @@ function RulesTab() {
   return (
     <div className="space-y-4">
       <SectionTitle icon={Layers} sub="Everything the incentive book says, searchable, so nothing gets looked up mid-week.">Rules Reference</SectionTitle>
-      <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3">
-        <Search size={16} className="text-slate-500" />
-        <input className="w-full bg-transparent py-2 text-slate-100 outline-none" placeholder="Search rules — “activity”, “stock”, “eagle”, “85%”…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="flex items-center gap-2 rounded-none border border-stone-400 bg-stone-100 px-3">
+        <Search size={16} className="text-stone-500" />
+        <input className="w-full bg-transparent py-2 text-stone-900 outline-none" placeholder="Search rules — “activity”, “stock”, “eagle”, “85%”…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {hits.length === 0 ? <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">No rule matches “{q}”.</div> : null}
+      {hits.length === 0 ? <div className="rounded-none border border-stone-300 bg-stone-100 p-4 text-sm text-stone-500">No rule matches “{q}”.</div> : null}
       {hits.map((r) => (
-        <div key={r.t} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="mb-1 text-sm font-black uppercase tracking-wide text-sky-400">{r.t}</div>
-          <p className="text-sm leading-relaxed text-slate-300">{r.b}</p>
+        <div key={r.t} className="rounded-none border border-stone-300 bg-stone-50 p-4">
+          <div className="mb-1 text-sm font-black uppercase tracking-wide text-blue-900">{r.t}</div>
+          <p className="text-sm leading-relaxed text-stone-700">{r.b}</p>
         </div>
       ))}
     </div>
